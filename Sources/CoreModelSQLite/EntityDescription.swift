@@ -8,21 +8,17 @@
 import CoreModel
 import SQLite
 
-internal extension Table {
+internal extension SchemaChanger {
     
-    init(entity: EntityName, database: String? = nil) {
-        self.init(entity.rawValue, database: database)
+    func create(model: Model, ifNotExists: Bool = true) throws {
+        for entity in model.entities {
+            try create(entity: entity, ifNotExists: ifNotExists)
+        }
     }
     
-    func create(entity: EntityDescription) -> String {
-        create { table in
-            // create `id` column
-            let id = Expression<String>("id")
-            table.column(id, primaryKey: true)
-            // create attribute columns
-            for attribute in entity.attributes {
-                table.column(attribute)
-            }
+    func create(entity: EntityDescription, ifNotExists: Bool = true) throws {
+        try create(table: entity.id.rawValue, ifNotExists: ifNotExists) { table in
+            table.addColumns(entity)
         }
     }
 }
@@ -34,7 +30,7 @@ internal extension SchemaChanger.CreateTableDefinition {
         // add ID column
         let id = ColumnDefinition(
             name: "id",
-            primaryKey: .init(), type: .TEXT, nullable: false, unique: true, defaultValue: .NULL, references: nil)
+            primaryKey: .init(autoIncrement: false), type: .TEXT, nullable: false, unique: true, defaultValue: .NULL, references: nil)
         add(column: id)
         
         // add attribute columns
@@ -42,49 +38,9 @@ internal extension SchemaChanger.CreateTableDefinition {
             add(column: ColumnDefinition(attribute: attribute))
         }
         
-        // add relationship columns
-        for relationship in entity.relationships {
-            
-        }
-    }
-}
-
-extension ColumnDefinition {
-    
-    init(relationship: Relationship) {
-        
-    }
-}
-
-internal extension TableBuilder {
-    
-    func column(_ attribute: Attribute) {
-        let id = attribute.id.rawValue
-        switch attribute.type {
-        case .bool:
-            column(Expression<Bool>(id))
-        case .int16:
-            column(Expression<Int64>(id))
-        case .int32:
-            column(Expression<Int64>(id))
-        case .int64:
-            column(Expression<Int64>(id))
-        case .float:
-            column(Expression<Double>(id))
-        case .double:
-            column(Expression<Double>(id))
-        case .string:
-            column(Expression<String>(id))
-        case .data:
-            column(Expression<Blob>(id))
-        case .date:
-            column(Expression<String>(id))
-        case .uuid:
-            column(Expression<Blob>(id))
-        case .url:
-            column(Expression<String>(id))
-        case .decimal:
-            column(Expression<Bool>(id))
+        // add to-one relationship columns
+        for relationship in entity.relationships where relationship.type == .toOne {
+            add(column: ColumnDefinition(relationship: relationship))
         }
     }
 }
