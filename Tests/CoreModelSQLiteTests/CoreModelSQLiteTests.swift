@@ -22,7 +22,17 @@ var testModel: Model { Model(entities: [
         ],
         relationships: [
             .init(id: "team", type: .toOne, destinationEntity: "Team", inverseRelationship: "members"),
-            .init(id: "events", type: .toMany, destinationEntity: "Event", inverseRelationship: "people")
+            .init(id: "events", type: .toMany, destinationEntity: "Event", inverseRelationship: "people"),
+            .init(id: "passport", type: .toOne, destinationEntity: "Passport", inverseRelationship: "owner")
+        ]
+    ),
+    EntityDescription(
+        id: "Passport",
+        attributes: [
+            .init(id: "number", type: .string)
+        ],
+        relationships: [
+            .init(id: "owner", type: .toOne, destinationEntity: "Person", inverseRelationship: "passport")
         ]
     ),
     EntityDescription(
@@ -287,7 +297,45 @@ func makeDatabase() throws -> SQLiteDatabase {
     try await database.delete("Person", for: "person1")
     #expect(try await database.fetch("Person", for: "person1") == nil)
     let fetchedEvent = try #require(try await database.fetch("Event", for: "event1"))
-    #expect(fetchedEvent.relationships["people"] == .null)
+    // an empty to-many is `.toMany([])`, not `.null` — matches CoreData, which never
+    // reports `.null` for a to-many relationship, only an empty set
+    #expect(fetchedEvent.relationships["people"] == .toMany([]))
+}
+
+/// Deleting either side of a one-to-one relationship must nullify the *other* side's
+/// foreign key — CoreData always nullifies on delete (`NSRelationshipDescription` never
+/// sets a cascade or deny rule), and unlike a one-to-many relationship, a one-to-one's
+/// inverse foreign key isn't dropped automatically by deleting the entity's own row.
+@Test func oneToOneRelationshipDeleteNullifiesInverse() async throws {
+    let database = try makeDatabase()
+    let person = ModelData(
+        entity: "Person",
+        id: "person1",
+        attributes: ["name": .string("Alice")],
+        relationships: ["passport": .toOne("passport1")]
+    )
+    let passport = ModelData(
+        entity: "Passport",
+        id: "passport1",
+        attributes: ["number": .string("X123")],
+        relationships: ["owner": .toOne("person1")]
+    )
+    try await database.insert(person)
+    try await database.insert(passport)
+
+    // deleting the passport nullifies the foreign key on Person
+    try await database.delete("Passport", for: "passport1")
+    let fetchedPerson = try #require(try await database.fetch("Person", for: "person1"))
+    #expect(fetchedPerson.relationships["passport"] == .null)
+
+    // re-link, then delete from the other side: deleting the person nullifies Passport.owner
+    var updatedPerson = person
+    updatedPerson.relationships["passport"] = .toOne("passport1")
+    try await database.insert(updatedPerson)
+    try await database.insert(passport)
+    try await database.delete("Person", for: "person1")
+    let fetchedPassport = try #require(try await database.fetch("Passport", for: "passport1"))
+    #expect(fetchedPassport.relationships["owner"] == .null)
 }
 
 @Test func fetchOffset() async throws {
