@@ -6,12 +6,8 @@
 //
 
 import Foundation
-@preconcurrency import CoreModel
+import CoreModel
 import SQLite
-
-// All stored properties are value types with Sendable members.
-// TODO: Remove once CoreModel declares the conformance itself.
-extension ModelData: @unchecked @retroactive Sendable { }
 
 public actor SQLiteDatabase {
 
