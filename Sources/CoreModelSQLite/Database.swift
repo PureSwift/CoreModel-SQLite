@@ -59,7 +59,7 @@ extension SQLiteDatabase: ModelStorage {
     public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
         try createTables()
         let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(for: entityDescription, columns: "*")
+        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "*")
         let statement = try connection.prepare(query.sql, query.bindings)
         var results = [ModelData]()
         for row in try statement.rowDictionaries() {
@@ -76,6 +76,7 @@ extension SQLiteDatabase: ModelStorage {
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(
             for: entityDescription,
+            model: model,
             columns: Self.primaryKeyColumn.quotedIdentifier
         )
         let statement = try connection.prepare(query.sql, query.bindings)
@@ -91,7 +92,7 @@ extension SQLiteDatabase: ModelStorage {
     public func count(_ fetchRequest: FetchRequest) async throws -> UInt {
         try createTables()
         let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(for: entityDescription, columns: "COUNT(*)")
+        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
         guard let count = try connection.scalar(query.sql, query.bindings) as? Int64 else {
             return 0
         }
@@ -266,11 +267,11 @@ internal extension SQLiteDatabase {
 internal extension FetchRequest {
 
     /// Build the `SELECT` statement for this fetch request.
-    func sqlFragment(for entity: EntityDescription, columns: String) throws -> SQLFragment {
+    func sqlFragment(for entity: EntityDescription, model: Model, columns: String) throws -> SQLFragment {
         var sql = "SELECT \(columns) FROM \(self.entity.rawValue.quotedIdentifier)"
         var bindings = [Binding?]()
         if let predicate {
-            let fragment = try predicate.sqlFragment(for: entity)
+            let fragment = try predicate.sqlFragment(for: entity, model: model)
             sql += " WHERE " + fragment.sql
             bindings += fragment.bindings
         }
