@@ -36,7 +36,9 @@ internal extension ColumnDefinition.Affinity {
         case .url:
             self = .TEXT
         case .decimal:
-            self = .NUMERIC
+            // stored as a string to preserve precision;
+            // NUMERIC affinity would coerce to REAL
+            self = .TEXT
         }
     }
 }
