@@ -121,16 +121,32 @@ extension SQLiteDatabase: ModelStorage {
         try createTables()
         let entityDescription = try model.entity(entity)
         try connection.transaction {
-            // remove inbound references and join table links
-            for relationship in entityDescription.relationships where relationship.type == .toMany {
-                switch try model.inverseType(of: relationship) {
-                case .toOne:
-                    // nullify foreign keys on the destination table
-                    let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                    try connection.run(sql, [id.rawValue])
+            // Remove every reference to the row being deleted, regardless of which side
+            // of the relationship holds the foreign key. This matches CoreData, which
+            // hardcodes `NSRelationshipDescription.deleteRule = .nullifyDeleteRule` for
+            // every relationship it generates (see `NSRelationshipDescription.init(relationship:)`
+            // in CoreDataModel) — there is no cascade or deny rule to honor, only nullify.
+            for relationship in entityDescription.relationships {
+                switch relationship.type {
                 case .toMany:
-                    let joinTable = JoinTable(entity: entity, relationship: relationship)
-                    try joinTable.removeAll(id, connection: connection)
+                    switch try model.inverseType(of: relationship) {
+                    case .toOne:
+                        // one/many-to-many: nullify the foreign key on the destination table
+                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
+                        try connection.run(sql, [id.rawValue])
+                    case .toMany:
+                        // many-to-many: drop this row's links from the join table
+                        let joinTable = JoinTable(entity: entity, relationship: relationship)
+                        try joinTable.removeAll(id, connection: connection)
+                    }
+                case .toOne:
+                    // this row's own to-one foreign key column disappears with the row
+                    // itself below; only a one-to-one inverse (the *other* table holding
+                    // a foreign key back to this row) needs an explicit nullify
+                    if try model.inverseType(of: relationship) == .toOne {
+                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
+                        try connection.run(sql, [id.rawValue])
+                    }
                 }
             }
             let sql = "DELETE FROM \(entity.rawValue.quotedIdentifier) WHERE \(Self.primaryKeyColumn.quotedIdentifier) = ?"
