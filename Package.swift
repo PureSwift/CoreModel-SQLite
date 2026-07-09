@@ -18,11 +18,11 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/PureSwift/CoreModel",
-            from: "2.4.3"
+            from: "2.6.3"
         ),
         .package(
             url: "https://github.com/stephencelis/SQLite.swift.git",
-            from: "0.15.4"
+            from: "0.16.0"
         )
     ],
     targets: [
