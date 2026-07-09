@@ -56,9 +56,16 @@ var testModel: Model { Model(entities: [
     )
 ]) }
 
+/// Path for an isolated, file-backed test database. Tests always run against a real
+/// SQLite file, never an in-memory connection, so file I/O behavior is exercised too.
+func temporaryDatabasePath(named name: String) -> String {
+    FileManager.default.temporaryDirectory
+        .appendingPathComponent("CoreModelSQLite-\(name)-\(UUID()).sqlite")
+        .path
+}
+
 func makeDatabase() throws -> SQLiteDatabase {
-    let connection = try Connection() // in-memory
-    return SQLiteDatabase(connection: connection, model: testModel)
+    try SQLiteDatabase(path: temporaryDatabasePath(named: "Tests"), model: testModel)
 }
 
 @Test func attributeRoundTrip() async throws {
