@@ -167,12 +167,21 @@ internal extension SQLiteDatabase {
     func upsert(_ value: ModelData) throws {
         let entity = try model.entity(value.entity)
         let columnValues = try value.columnValues(for: entity)
+        let providedColumns = value.providedColumnNames(for: entity)
 
-        // INSERT ... ON CONFLICT (id) DO UPDATE so edits replace existing rows.
+        // INSERT ... ON CONFLICT (id) DO UPDATE so edits replace existing rows. The insert
+        // side always supplies every column (missing attributes/to-one relationships bind
+        // NULL, appropriate for a brand new row); the update side only overwrites columns
+        // the caller actually provided, so a partial `ModelData` (e.g. patching a couple of
+        // fields) doesn't null out everything it left unmentioned — matching CoreData's
+        // `NSManagedObject.setValues(for:)`, which only touches keys present in the value.
         let columns = columnValues.map { $0.column.quotedIdentifier }
         let placeholders = repeatElement("?", count: columns.count).joined(separator: ", ")
         var sql = "INSERT INTO \(value.entity.rawValue.quotedIdentifier) (\(columns.joined(separator: ", "))) VALUES (\(placeholders))"
-        let updates = columns.dropFirst().map { "\($0) = excluded.\($0)" }
+        let updates = columnValues
+            .dropFirst()
+            .filter { providedColumns.contains($0.column) }
+            .map { "\($0.column.quotedIdentifier) = excluded.\($0.column.quotedIdentifier)" }
         if updates.isEmpty == false {
             sql += " ON CONFLICT (\(Self.primaryKeyColumn.quotedIdentifier)) DO UPDATE SET " + updates.joined(separator: ", ")
         } else {
