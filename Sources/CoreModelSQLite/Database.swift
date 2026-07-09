@@ -230,7 +230,10 @@ internal extension SQLiteDatabase {
                 let joinTable = JoinTable(entity: entity.id, relationship: relationship)
                 destinationIDs = try joinTable.fetch(value.id, connection: connection)
             }
-            value.relationships[relationship.id] = destinationIDs.isEmpty ? .null : .toMany(destinationIDs)
+            // always report `.toMany`, even when empty — CoreData's equivalent
+            // (`NSManagedObject.relationship(for:)`) never reports `.null` for a to-many
+            // relationship, and `Entity` decoding expects an array, not an absent value.
+            value.relationships[relationship.id] = .toMany(destinationIDs)
         }
     }
 }
