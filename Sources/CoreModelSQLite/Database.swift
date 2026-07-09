@@ -137,6 +137,13 @@ extension SQLiteDatabase: ModelStorage {
             try connection.run(sql, [id.rawValue])
         }
     }
+
+    /// Delete the specified managed objects.
+    public func delete(_ entity: EntityName, for ids: [ObjectID]) async throws {
+        for id in ids {
+            try await delete(entity, for: id)
+        }
+    }
 }
 
 internal extension SQLiteDatabase {
