@@ -20,28 +20,28 @@ internal struct SQLFragment {
 internal extension FetchRequest.Predicate {
 
     /// Translate the predicate into a SQL `WHERE` clause fragment.
-    func sqlFragment(for entity: EntityDescription) throws -> SQLFragment {
+    func sqlFragment(for entity: EntityDescription, model: Model) throws -> SQLFragment {
         switch self {
         case let .value(value):
             return SQLFragment(sql: value ? "1" : "0", bindings: [])
         case let .compound(compound):
-            return try compound.sqlFragment(for: entity)
+            return try compound.sqlFragment(for: entity, model: model)
         case let .comparison(comparison):
-            return try comparison.sqlFragment(for: entity, predicate: self)
+            return try comparison.sqlFragment(for: entity, model: model, predicate: self)
         }
     }
 }
 
 internal extension FetchRequest.Predicate.Compound {
 
-    func sqlFragment(for entity: EntityDescription) throws -> SQLFragment {
+    func sqlFragment(for entity: EntityDescription, model: Model) throws -> SQLFragment {
         switch self {
         case let .and(subpredicates):
-            return try .joined(subpredicates, separator: " AND ", entity: entity)
+            return try .joined(subpredicates, separator: " AND ", entity: entity, model: model)
         case let .or(subpredicates):
-            return try .joined(subpredicates, separator: " OR ", entity: entity)
+            return try .joined(subpredicates, separator: " OR ", entity: entity, model: model)
         case let .not(subpredicate):
-            let fragment = try subpredicate.sqlFragment(for: entity)
+            let fragment = try subpredicate.sqlFragment(for: entity, model: model)
             return SQLFragment(sql: "NOT (" + fragment.sql + ")", bindings: fragment.bindings)
         }
     }
@@ -52,12 +52,13 @@ private extension SQLFragment {
     static func joined(
         _ predicates: [FetchRequest.Predicate],
         separator: String,
-        entity: EntityDescription
+        entity: EntityDescription,
+        model: Model
     ) throws -> SQLFragment {
         guard predicates.isEmpty == false else {
             return SQLFragment(sql: "1", bindings: [])
         }
-        let fragments = try predicates.map { try $0.sqlFragment(for: entity) }
+        let fragments = try predicates.map { try $0.sqlFragment(for: entity, model: model) }
         return SQLFragment(
             sql: "(" + fragments.map(\.sql).joined(separator: separator) + ")",
             bindings: fragments.flatMap(\.bindings)
@@ -69,6 +70,7 @@ internal extension FetchRequest.Predicate.Comparison {
 
     func sqlFragment(
         for entity: EntityDescription,
+        model: Model,
         predicate: FetchRequest.Predicate
     ) throws -> SQLFragment {
 
@@ -76,11 +78,21 @@ internal extension FetchRequest.Predicate.Comparison {
         guard case let .keyPath(keyPath) = left else {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
+        let property = PropertyKey(rawValue: keyPath.rawValue)
+        // to-many relationships are not columns; translate to a membership subquery
+        if let relationship = entity.relationships.first(where: { $0.id == property && $0.type == .toMany }) {
+            return try toManySQLFragment(
+                relationship,
+                entity: entity,
+                model: model,
+                predicate: predicate
+            )
+        }
         guard modifier == nil else {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
         let column = try entity.validateColumn(
-            PropertyKey(rawValue: keyPath.rawValue),
+            property,
             predicate: predicate
         )
 
@@ -128,6 +140,62 @@ internal extension FetchRequest.Predicate.Comparison {
         case .matches:
             // Regular expressions require a custom SQL function.
             throw SQLiteDatabaseError.invalidPredicate(predicate)
+        }
+    }
+
+    /// Translate a comparison against a to-many relationship into a membership subquery.
+    ///
+    /// Matches CoreData's `ANY <relationship> IN <objects>` / `ANY <relationship> == <object>`
+    /// semantics: the row matches if at least one linked destination object is in the given
+    /// set. One-to-many relationships resolve through the inverse foreign key on the
+    /// destination table; many-to-many through the join table.
+    private func toManySQLFragment(
+        _ relationship: Relationship,
+        entity: EntityDescription,
+        model: Model,
+        predicate: FetchRequest.Predicate
+    ) throws -> SQLFragment {
+        // `.any` is the only modifier with a direct SQL translation (`.all` would
+        // require set equality); no modifier is treated as `.any`, like NSPredicate.
+        guard modifier == nil || modifier == .any else {
+            throw SQLiteDatabaseError.invalidPredicate(predicate)
+        }
+        let destinationIDs: [Binding?]
+        switch type {
+        case .in:
+            destinationIDs = try right.constantBindings(predicate: predicate)
+        case .equalTo, .contains:
+            destinationIDs = [try right.constantBinding(predicate: predicate)]
+        default:
+            throw SQLiteDatabaseError.invalidPredicate(predicate)
+        }
+        guard destinationIDs.isEmpty == false else {
+            return SQLFragment(sql: "0", bindings: [])
+        }
+        let placeholders = repeatElement("?", count: destinationIDs.count).joined(separator: ", ")
+        let primaryKey = SQLiteDatabase.primaryKeyColumn.quotedIdentifier
+        switch try model.inverseType(of: relationship) {
+        case .toOne:
+            // one-to-many: the destination table holds the foreign key back to this entity
+            let destinationTable = relationship.destinationEntity.rawValue.quotedIdentifier
+            let foreignKey = relationship.inverseRelationship.rawValue.quotedIdentifier
+            return SQLFragment(
+                sql: "\(primaryKey) IN (SELECT \(foreignKey) FROM \(destinationTable) WHERE \(primaryKey) IN (\(placeholders)))",
+                bindings: destinationIDs
+            )
+        case .toMany:
+            let joinTable = JoinTable(entity: entity.id, relationship: relationship)
+            let table = joinTable.name.quotedIdentifier
+            let thisColumn = joinTable.thisColumn.quotedIdentifier
+            let otherColumn = joinTable.otherColumn.quotedIdentifier
+            var sql = "\(primaryKey) IN (SELECT \(thisColumn) FROM \(table) WHERE \(otherColumn) IN (\(placeholders))"
+            var bindings = destinationIDs
+            if joinTable.isSymmetric {
+                sql += " UNION SELECT \(otherColumn) FROM \(table) WHERE \(thisColumn) IN (\(placeholders))"
+                bindings += destinationIDs
+            }
+            sql += ")"
+            return SQLFragment(sql: sql, bindings: bindings)
         }
     }
 }
