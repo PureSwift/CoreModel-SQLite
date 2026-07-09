@@ -38,7 +38,10 @@ let package = Package(
         ),
         .testTarget(
             name: "CoreModelSQLiteTests",
-            dependencies: ["CoreModelSQLite"]
+            dependencies: ["CoreModelSQLite"],
+            resources: [
+                .copy("TestFiles")
+            ]
         )
     ]
 )
