@@ -29,7 +29,7 @@ internal extension SchemaChanger.CreateTableDefinition {
         
         // add ID column
         let id = ColumnDefinition(
-            name: "id",
+            name: SQLiteDatabase.primaryKeyColumn,
             primaryKey: .init(autoIncrement: false), type: .TEXT, nullable: false, unique: true, defaultValue: .NULL, references: nil)
         add(column: id)
         
