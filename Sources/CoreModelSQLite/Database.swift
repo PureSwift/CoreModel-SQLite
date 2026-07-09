@@ -38,7 +38,7 @@ public extension SQLiteDatabase {
 extension SQLiteDatabase: ModelStorage {
 
     /// Fetch managed object.
-    public func fetch(_ entity: EntityName, for id: ObjectID) async throws -> ModelData? {
+    public func fetch(_ entity: EntityName, for id: ObjectID) throws -> ModelData? {
         try createTables()
         let entityDescription = try model.entity(entity)
         let sql = "SELECT * FROM \(entity.rawValue.quotedIdentifier) WHERE \(Self.primaryKeyColumn.quotedIdentifier) = ?"
@@ -52,7 +52,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Fetch managed objects.
-    public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
+    public func fetch(_ fetchRequest: FetchRequest) throws -> [ModelData] {
         try createTables()
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "*")
@@ -67,7 +67,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Fetch managed objects IDs.
-    public func fetchID(_ fetchRequest: FetchRequest) async throws -> [ObjectID] {
+    public func fetchID(_ fetchRequest: FetchRequest) throws -> [ObjectID] {
         try createTables()
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(
@@ -85,7 +85,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Fetch and return result count.
-    public func count(_ fetchRequest: FetchRequest) async throws -> UInt {
+    public func count(_ fetchRequest: FetchRequest) throws -> UInt {
         try createTables()
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
@@ -96,7 +96,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Create or edit a managed object.
-    public func insert(_ value: ModelData) async throws {
+    public func insert(_ value: ModelData) throws {
         try createTables()
         try connection.transaction {
             try upsert(value)
@@ -104,7 +104,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Create or edit multiple managed objects.
-    public func insert(_ values: [ModelData]) async throws {
+    public func insert(_ values: [ModelData]) throws {
         try createTables()
         try connection.transaction {
             for value in values {
@@ -114,7 +114,7 @@ extension SQLiteDatabase: ModelStorage {
     }
 
     /// Delete the specified managed object.
-    public func delete(_ entity: EntityName, for id: ObjectID) async throws {
+    public func delete(_ entity: EntityName, for id: ObjectID) throws {
         try createTables()
         let entityDescription = try model.entity(entity)
         try connection.transaction {
@@ -150,11 +150,11 @@ extension SQLiteDatabase: ModelStorage {
             try connection.run(sql, [id.rawValue])
         }
     }
-
+    
     /// Delete the specified managed objects.
-    public func delete(_ entity: EntityName, for ids: [ObjectID]) async throws {
+    public func delete(_ entity: EntityName, for ids: [ObjectID]) throws {
         for id in ids {
-            try await delete(entity, for: id)
+            try delete(entity, for: id)
         }
     }
 }
