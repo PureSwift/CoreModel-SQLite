@@ -38,6 +38,20 @@ internal extension ModelData {
         return values
     }
 
+    /// Column names explicitly present in `attributes`/to-one `relationships`, as opposed
+    /// to columns simply absent from a partial `ModelData`. Used to build an `ON CONFLICT
+    /// DO UPDATE` that only overwrites columns the caller actually supplied.
+    func providedColumnNames(for entity: EntityDescription) -> Set<String> {
+        var names = Set<String>()
+        for attribute in entity.attributes where attributes[attribute.id] != nil {
+            names.insert(attribute.id.rawValue)
+        }
+        for relationship in entity.relationships where relationship.type == .toOne && relationships[relationship.id] != nil {
+            names.insert(relationship.id.rawValue)
+        }
+        return names
+    }
+
     /// Decode a row fetched from the entity table.
     ///
     /// Only attributes and to-one relationships are decoded from the row itself;
