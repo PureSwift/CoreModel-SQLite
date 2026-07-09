@@ -7,7 +7,7 @@
 
 import Foundation
 import CoreModel
-@preconcurrency import SQLite
+import SQLite
 
 /// CoreModel SQLite Error
 public enum SQLiteDatabaseError: Error {
