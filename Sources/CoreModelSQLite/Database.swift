@@ -37,125 +37,52 @@ public extension SQLiteDatabase {
 
 extension SQLiteDatabase: ModelStorage {
 
-    /// Fetch managed object.
-    public func fetch(_ entity: EntityName, for id: ObjectID) throws -> ModelData? {
+    public func fetch(_ entity: EntityName, for id: ObjectID) async throws -> ModelData? {
         try createTables()
-        let entityDescription = try model.entity(entity)
-        let sql = "SELECT * FROM \(entity.rawValue.quotedIdentifier) WHERE \(Self.primaryKeyColumn.quotedIdentifier) = ?"
-        let statement = try connection.prepare(sql, [id.rawValue])
-        guard let row = try statement.rowDictionaries().first else {
-            return nil
-        }
-        var value = try ModelData(row: row, entity: entityDescription)
-        try fetchToManyRelationships(&value, entity: entityDescription)
-        return value
+        try await asyncYield()
+        return try connection.fetch(entity, for: id, model: model)
     }
 
-    /// Fetch managed objects.
-    public func fetch(_ fetchRequest: FetchRequest) throws -> [ModelData] {
+    public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
         try createTables()
-        let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "*")
-        let statement = try connection.prepare(query.sql, query.bindings)
-        var results = [ModelData]()
-        for row in try statement.rowDictionaries() {
-            var value = try ModelData(row: row, entity: entityDescription)
-            try fetchToManyRelationships(&value, entity: entityDescription)
-            results.append(value)
-        }
-        return results
+        try await asyncYield()
+        return try connection.fetch(fetchRequest, model: model)
     }
 
-    /// Fetch managed objects IDs.
-    public func fetchID(_ fetchRequest: FetchRequest) throws -> [ObjectID] {
+    public func fetchID(_ fetchRequest: FetchRequest) async throws -> [ObjectID] {
         try createTables()
-        let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(
-            for: entityDescription,
-            model: model,
-            columns: Self.primaryKeyColumn.quotedIdentifier
-        )
-        let statement = try connection.prepare(query.sql, query.bindings)
-        var results = [ObjectID]()
-        while let row = try statement.failableNext() {
-            guard let value = row[0] as? String else { continue }
-            results.append(ObjectID(rawValue: value))
-        }
-        return results
+        try await asyncYield()
+        return try connection.fetchID(fetchRequest, model: model)
     }
 
-    /// Fetch and return result count.
-    public func count(_ fetchRequest: FetchRequest) throws -> UInt {
+    public func count(_ fetchRequest: FetchRequest) async throws -> UInt {
         try createTables()
-        let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
-        guard let count = try connection.scalar(query.sql, query.bindings) as? Int64 else {
-            return 0
-        }
-        return UInt(count)
+        try await asyncYield()
+        return try connection.count(fetchRequest, model: model)
     }
 
-    /// Create or edit a managed object.
-    public func insert(_ value: ModelData) throws {
+    public func insert(_ value: ModelData) async throws {
         try createTables()
-        try connection.transaction {
-            try upsert(value)
-        }
+        try await asyncYield()
+        try connection.insert(value, model: model)
     }
 
-    /// Create or edit multiple managed objects.
-    public func insert(_ values: [ModelData]) throws {
+    public func insert(_ values: [ModelData]) async throws {
         try createTables()
-        try connection.transaction {
-            for value in values {
-                try upsert(value)
-            }
-        }
+        try await asyncYield()
+        try connection.insert(values, model: model)
     }
 
-    /// Delete the specified managed object.
-    public func delete(_ entity: EntityName, for id: ObjectID) throws {
+    public func delete(_ entity: EntityName, for id: ObjectID) async throws {
         try createTables()
-        let entityDescription = try model.entity(entity)
-        try connection.transaction {
-            // Remove every reference to the row being deleted, regardless of which side
-            // of the relationship holds the foreign key. This matches CoreData, which
-            // hardcodes `NSRelationshipDescription.deleteRule = .nullifyDeleteRule` for
-            // every relationship it generates (see `NSRelationshipDescription.init(relationship:)`
-            // in CoreDataModel) — there is no cascade or deny rule to honor, only nullify.
-            for relationship in entityDescription.relationships {
-                switch relationship.type {
-                case .toMany:
-                    switch try model.inverseType(of: relationship) {
-                    case .toOne:
-                        // one/many-to-many: nullify the foreign key on the destination table
-                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                        try connection.run(sql, [id.rawValue])
-                    case .toMany:
-                        // many-to-many: drop this row's links from the join table
-                        let joinTable = JoinTable(entity: entity, relationship: relationship)
-                        try joinTable.removeAll(id, connection: connection)
-                    }
-                case .toOne:
-                    // this row's own to-one foreign key column disappears with the row
-                    // itself below; only a one-to-one inverse (the *other* table holding
-                    // a foreign key back to this row) needs an explicit nullify
-                    if try model.inverseType(of: relationship) == .toOne {
-                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                        try connection.run(sql, [id.rawValue])
-                    }
-                }
-            }
-            let sql = "DELETE FROM \(entity.rawValue.quotedIdentifier) WHERE \(Self.primaryKeyColumn.quotedIdentifier) = ?"
-            try connection.run(sql, [id.rawValue])
-        }
+        try await asyncYield()
+        try connection.delete(entity, for: id, model: model)
     }
-    
-    /// Delete the specified managed objects.
-    public func delete(_ entity: EntityName, for ids: [ObjectID]) throws {
-        for id in ids {
-            try delete(entity, for: id)
-        }
+
+    public func delete(_ entity: EntityName, for ids: [ObjectID]) async throws {
+        try createTables()
+        try await asyncYield()
+        try connection.delete(entity, for: ids, model: model)
     }
 }
 
@@ -175,9 +102,117 @@ internal extension SQLiteDatabase {
         }
         didCreateTables = true
     }
+    
+    func asyncYield() async throws {
+        await Task.yield()
+        try Task.checkCancellation()
+    }
+}
+
+internal extension Connection {
+
+    func fetch(_ entity: EntityName, for id: ObjectID, model: Model) throws -> ModelData? {
+        let entityDescription = try model.entity(entity)
+        let sql = "SELECT * FROM \(entity.rawValue.quotedIdentifier) WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) = ?"
+        let statement = try prepare(sql, [id.rawValue])
+        guard let row = try statement.rowDictionaries().first else {
+            return nil
+        }
+        var value = try ModelData(row: row, entity: entityDescription)
+        try fetchToManyRelationships(&value, entity: entityDescription, model: model)
+        return value
+    }
+
+    func fetch(_ fetchRequest: FetchRequest, model: Model) throws -> [ModelData] {
+        let entityDescription = try model.entity(fetchRequest.entity)
+        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "*")
+        let statement = try prepare(query.sql, query.bindings)
+        var results = [ModelData]()
+        for row in try statement.rowDictionaries() {
+            var value = try ModelData(row: row, entity: entityDescription)
+            try fetchToManyRelationships(&value, entity: entityDescription, model: model)
+            results.append(value)
+        }
+        return results
+    }
+
+    func fetchID(_ fetchRequest: FetchRequest, model: Model) throws -> [ObjectID] {
+        let entityDescription = try model.entity(fetchRequest.entity)
+        let query = try fetchRequest.sqlFragment(
+            for: entityDescription,
+            model: model,
+            columns: SQLiteDatabase.primaryKeyColumn.quotedIdentifier
+        )
+        let statement = try prepare(query.sql, query.bindings)
+        var results = [ObjectID]()
+        while let row = try statement.failableNext() {
+            guard let value = row[0] as? String else { continue }
+            results.append(ObjectID(rawValue: value))
+        }
+        return results
+    }
+
+    func count(_ fetchRequest: FetchRequest, model: Model) throws -> UInt {
+        let entityDescription = try model.entity(fetchRequest.entity)
+        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
+        guard let count = try scalar(query.sql, query.bindings) as? Int64 else {
+            return 0
+        }
+        return UInt(count)
+    }
+
+    func insert(_ value: ModelData, model: Model) throws {
+        try transaction {
+            try upsert(value, model: model)
+        }
+    }
+
+    func insert(_ values: [ModelData], model: Model) throws {
+        try transaction {
+            for value in values {
+                try upsert(value, model: model)
+            }
+        }
+    }
+
+    func delete(_ entity: EntityName, for id: ObjectID, model: Model) throws {
+        let entityDescription = try model.entity(entity)
+        try transaction {
+            // Nullify all references to the deleted row (mirrors CoreData's nullify delete rule).
+            for relationship in entityDescription.relationships {
+                switch relationship.type {
+                case .toMany:
+                    switch try model.inverseType(of: relationship) {
+                    case .toOne:
+                        // one/many-to-many: nullify the foreign key on the destination table
+                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
+                        try run(sql, [id.rawValue])
+                    case .toMany:
+                        // many-to-many: drop this row's links from the join table
+                        let joinTable = JoinTable(entity: entity, relationship: relationship)
+                        try joinTable.removeAll(id, connection: self)
+                    }
+                case .toOne:
+                    // only a one-to-one inverse (the other table holding a back-reference) needs explicit nullify
+                    if try model.inverseType(of: relationship) == .toOne {
+                        let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
+                        try run(sql, [id.rawValue])
+                    }
+                }
+            }
+            let sql = "DELETE FROM \(entity.rawValue.quotedIdentifier) WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) = ?"
+            try run(sql, [id.rawValue])
+        }
+    }
+
+    func delete(_ entity: EntityName, for ids: [ObjectID], model: Model) throws {
+        for id in ids {
+            try delete(entity, for: id, model: model)
+        }
+    }
 
     /// Insert or update the row, then synchronize to-many relationships.
-    func upsert(_ value: ModelData) throws {
+    func upsert(_ value: ModelData, model: Model) throws {
         let entity = try model.entity(value.entity)
         let columnValues = try value.columnValues(for: entity)
         let providedColumns = value.providedColumnNames(for: entity)
@@ -196,11 +231,11 @@ internal extension SQLiteDatabase {
             .filter { providedColumns.contains($0.column) }
             .map { "\($0.column.quotedIdentifier) = excluded.\($0.column.quotedIdentifier)" }
         if updates.isEmpty == false {
-            sql += " ON CONFLICT (\(Self.primaryKeyColumn.quotedIdentifier)) DO UPDATE SET " + updates.joined(separator: ", ")
+            sql += " ON CONFLICT (\(SQLiteDatabase.primaryKeyColumn.quotedIdentifier)) DO UPDATE SET " + updates.joined(separator: ", ")
         } else {
-            sql += " ON CONFLICT (\(Self.primaryKeyColumn.quotedIdentifier)) DO NOTHING"
+            sql += " ON CONFLICT (\(SQLiteDatabase.primaryKeyColumn.quotedIdentifier)) DO NOTHING"
         }
-        try connection.run(sql, columnValues.map { $0.binding })
+        try run(sql, columnValues.map { $0.binding })
 
         // synchronize to-many relationships
         for relationship in entity.relationships where relationship.type == .toMany {
@@ -221,27 +256,27 @@ internal extension SQLiteDatabase {
                 // one-to-many: rewrite the foreign key on the destination table
                 let table = relationship.destinationEntity.rawValue.quotedIdentifier
                 let foreignKey = relationship.inverseRelationship.rawValue.quotedIdentifier
-                try connection.run("UPDATE \(table) SET \(foreignKey) = NULL WHERE \(foreignKey) = ?", [value.id.rawValue])
+                try run("UPDATE \(table) SET \(foreignKey) = NULL WHERE \(foreignKey) = ?", [value.id.rawValue])
                 if destinationIDs.isEmpty == false {
                     let placeholders = repeatElement("?", count: destinationIDs.count).joined(separator: ", ")
                     let bindings: [Binding?] = [value.id.rawValue] + destinationIDs.map { $0.rawValue }
-                    try connection.run("UPDATE \(table) SET \(foreignKey) = ? WHERE \(Self.primaryKeyColumn.quotedIdentifier) IN (\(placeholders))", bindings)
+                    try run("UPDATE \(table) SET \(foreignKey) = ? WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) IN (\(placeholders))", bindings)
                 }
             case .toMany:
                 let joinTable = JoinTable(entity: entity.id, relationship: relationship)
-                try joinTable.replace(value.id, with: destinationIDs, connection: connection)
+                try joinTable.replace(value.id, with: destinationIDs, connection: self)
             }
         }
     }
 
     /// Fill in to-many relationship values with queries against the inverse.
-    func fetchToManyRelationships(_ value: inout ModelData, entity: EntityDescription) throws {
+    func fetchToManyRelationships(_ value: inout ModelData, entity: EntityDescription, model: Model) throws {
         for relationship in entity.relationships where relationship.type == .toMany {
             let destinationIDs: [ObjectID]
             switch try model.inverseType(of: relationship) {
             case .toOne:
-                let sql = "SELECT \(Self.primaryKeyColumn.quotedIdentifier) FROM \(relationship.destinationEntity.rawValue.quotedIdentifier) WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                let statement = try connection.prepare(sql, [value.id.rawValue])
+                let sql = "SELECT \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) FROM \(relationship.destinationEntity.rawValue.quotedIdentifier) WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
+                let statement = try prepare(sql, [value.id.rawValue])
                 var results = [ObjectID]()
                 while let row = try statement.failableNext() {
                     guard let idString = row[0] as? String else { continue }
@@ -250,11 +285,9 @@ internal extension SQLiteDatabase {
                 destinationIDs = results
             case .toMany:
                 let joinTable = JoinTable(entity: entity.id, relationship: relationship)
-                destinationIDs = try joinTable.fetch(value.id, connection: connection)
+                destinationIDs = try joinTable.fetch(value.id, connection: self)
             }
-            // always report `.toMany`, even when empty — CoreData's equivalent
-            // (`NSManagedObject.relationship(for:)`) never reports `.null` for a to-many
-            // relationship, and `Entity` decoding expects an array, not an absent value.
+            // always report `.toMany`, even when empty — CoreData's equivalent never reports `.null` for a to-many relationship
             value.relationships[relationship.id] = .toMany(destinationIDs)
         }
     }
