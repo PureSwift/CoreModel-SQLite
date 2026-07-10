@@ -16,11 +16,14 @@ public actor SQLiteDatabase {
 
     public let model: Model
 
-    let connection: Connection
-
+    internal let connection: SQLite.Connection
+    
     internal private(set) var didCreateTables = false
 
-    public init(connection: Connection, model: Model) {
+    public init(
+        connection: SQLite.Connection,
+        model: Model
+    ) {
         self.connection = connection
         self.model = model
     }
@@ -42,7 +45,7 @@ extension SQLiteDatabase: ModelStorage {
         try await asyncYield()
         return try connection.fetch(entity, for: id, model: model)
     }
-
+    
     public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
         try createTables()
         try await asyncYield()
@@ -90,16 +93,7 @@ internal extension SQLiteDatabase {
 
     func createTables() throws {
         guard didCreateTables == false else { return }
-        let schemaChanger = SchemaChanger(connection: connection)
-        try schemaChanger.create(model: model, ifNotExists: true)
-        // create join tables for many-to-many relationships
-        for entity in model.entities {
-            for relationship in entity.relationships where relationship.type == .toMany {
-                guard try model.inverseType(of: relationship) == .toMany else { continue }
-                let joinTable = JoinTable(entity: entity.id, relationship: relationship)
-                try joinTable.create(connection: connection)
-            }
-        }
+        try connection.createTables(model: model)
         didCreateTables = true
     }
     
@@ -110,6 +104,19 @@ internal extension SQLiteDatabase {
 }
 
 internal extension Connection {
+    
+    func createTables(model: Model) throws {
+        let schemaChanger = SchemaChanger(connection: self)
+        try schemaChanger.create(model: model, ifNotExists: true)
+        // create join tables for many-to-many relationships
+        for entity in model.entities {
+            for relationship in entity.relationships where relationship.type == .toMany {
+                guard try model.inverseType(of: relationship) == .toMany else { continue }
+                let joinTable = JoinTable(entity: entity.id, relationship: relationship)
+                try joinTable.create(connection: self)
+            }
+        }
+    }
 
     func fetch(_ entity: EntityName, for id: ObjectID, model: Model) throws -> ModelData? {
         let entityDescription = try model.entity(entity)
