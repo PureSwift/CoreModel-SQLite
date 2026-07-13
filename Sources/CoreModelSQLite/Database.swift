@@ -17,15 +17,18 @@ public actor SQLiteDatabase {
     public let model: Model
 
     internal let connection: SQLite.Connection
-    
-    internal private(set) var didCreateTables = false
 
+    /// Creates the schema eagerly, synchronously, as part of initialization — not lazily
+    /// on first use. A `SQLiteViewContext` opens its own read-only connection to the same
+    /// file and, being read-only, can never create the schema itself; without this, a
+    /// fetch through the view context before any write happens throws "no such table".
     public init(
         connection: SQLite.Connection,
         model: Model
-    ) {
+    ) throws {
         self.connection = connection
         self.model = model
+        try connection.createTables(model: model)
     }
 }
 
@@ -34,56 +37,48 @@ public extension SQLiteDatabase {
     /// Open or create a database file at the specified path.
     init(path: String, model: Model) throws {
         let connection = try Connection(path)
-        self.init(connection: connection, model: model)
+        try self.init(connection: connection, model: model)
     }
 }
 
 extension SQLiteDatabase: ModelStorage {
 
     public func fetch(_ entity: EntityName, for id: ObjectID) async throws -> ModelData? {
-        try createTables()
         try await asyncYield()
         return try connection.fetch(entity, for: id, model: model)
     }
-    
+
     public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
-        try createTables()
         try await asyncYield()
         return try connection.fetch(fetchRequest, model: model)
     }
 
     public func fetchID(_ fetchRequest: FetchRequest) async throws -> [ObjectID] {
-        try createTables()
         try await asyncYield()
         return try connection.fetchID(fetchRequest, model: model)
     }
 
     public func count(_ fetchRequest: FetchRequest) async throws -> UInt {
-        try createTables()
         try await asyncYield()
         return try connection.count(fetchRequest, model: model)
     }
 
     public func insert(_ value: ModelData) async throws {
-        try createTables()
         try await asyncYield()
         try connection.insert(value, model: model)
     }
 
     public func insert(_ values: [ModelData]) async throws {
-        try createTables()
         try await asyncYield()
         try connection.insert(values, model: model)
     }
 
     public func delete(_ entity: EntityName, for id: ObjectID) async throws {
-        try createTables()
         try await asyncYield()
         try connection.delete(entity, for: id, model: model)
     }
 
     public func delete(_ entity: EntityName, for ids: [ObjectID]) async throws {
-        try createTables()
         try await asyncYield()
         try connection.delete(entity, for: ids, model: model)
     }
@@ -91,12 +86,6 @@ extension SQLiteDatabase: ModelStorage {
 
 internal extension SQLiteDatabase {
 
-    func createTables() throws {
-        guard didCreateTables == false else { return }
-        try connection.createTables(model: model)
-        didCreateTables = true
-    }
-    
     func asyncYield() async throws {
         await Task.yield()
         try Task.checkCancellation()
