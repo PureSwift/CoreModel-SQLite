@@ -38,6 +38,17 @@ jobs:
     - name: Test
       run: swift test -c ${{ matrix.config }}
 
+  skip-fuse:
+    name: Skip Fuse (Android)
+    runs-on: macos-26
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Swift Version
+      run: swift --version
+    - name: Build (Skip Fuse)
+      run: SKIP_FUSE=1 swift build --target CoreModelSQLite
+
   android:
     name: Android
     runs-on: macos-15
