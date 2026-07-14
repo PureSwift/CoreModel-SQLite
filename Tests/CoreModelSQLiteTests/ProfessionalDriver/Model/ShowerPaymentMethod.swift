@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller  on 5/7/25.
 //
 
+import CoreModel
+
 /// ProfessionalDriver Payment method
 public enum ShowerPaymentMethod: Equatable, Hashable, Codable, Sendable {
 
@@ -71,3 +73,7 @@ extension ShowerPaymentMethod: RawRepresentable {
         }
     }
 }
+
+// MARK: - AttributeCodable
+
+extension ShowerPaymentMethod: AttributeCodable {}

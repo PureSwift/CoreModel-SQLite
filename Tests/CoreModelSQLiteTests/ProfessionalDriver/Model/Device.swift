@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 #if canImport(UIKit)
 import UIKit
@@ -83,6 +84,10 @@ extension Device.ID: ExpressibleByStringLiteral {
         self.init(rawValue: value)
     }
 }
+
+// MARK: - AttributeCodable
+
+extension Device.ID: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

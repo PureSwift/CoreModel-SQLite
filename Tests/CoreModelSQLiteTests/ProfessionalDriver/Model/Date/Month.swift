@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 public extension Date {
 
@@ -63,6 +64,10 @@ public extension Date.Month {
         }
     }
 }
+
+// MARK: - AttributeCodable
+
+extension Date.Month: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

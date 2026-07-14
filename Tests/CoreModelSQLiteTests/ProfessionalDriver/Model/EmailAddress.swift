@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 #if canImport(RegexBuilder)
 import RegexBuilder
 #endif
@@ -63,6 +64,10 @@ internal extension EmailAddress {
     }
     #endif
 }
+
+// MARK: - AttributeCodable
+
+extension EmailAddress: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

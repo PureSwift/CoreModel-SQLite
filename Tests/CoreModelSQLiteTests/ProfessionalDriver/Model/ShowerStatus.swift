@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 5/6/25.
 //
 
+import CoreModel
+
 /// Shower Status
 public enum ShowerStatus: String, Codable, CaseIterable, Sendable {
 
@@ -23,3 +25,7 @@ public enum ShowerStatus: String, Codable, CaseIterable, Sendable {
     /// See Cashier
     case seeCashier = "SEE"
 }
+
+// MARK: - AttributeCodable
+
+extension ShowerStatus: AttributeCodable {}

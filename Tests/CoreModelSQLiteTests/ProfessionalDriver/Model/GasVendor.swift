@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 8/29/23.
 //
 
+import CoreModel
+
 /// Gas Vendor
 public enum GasVendor: String, Codable, CaseIterable, Sendable {
 
@@ -31,6 +33,10 @@ public enum GasVendor: String, Codable, CaseIterable, Sendable {
     case valero = "Valero"
     case ultraMar = "Ultra-Mar"
 }
+
+// MARK: - AttributeCodable
+
+extension GasVendor: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

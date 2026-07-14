@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller  on 5/6/25.
 //
 
+import CoreModel
+
 /// Driver ID
 public struct DriverID: RawRepresentable, Codable, Equatable, Hashable, Sendable {
 
@@ -31,6 +33,10 @@ extension DriverID: ExpressibleByStringLiteral {
         self.init(value)
     }
 }
+
+// MARK: - AttributeCodable
+
+extension DriverID: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

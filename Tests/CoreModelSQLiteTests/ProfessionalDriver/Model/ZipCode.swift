@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 #if canImport(RegexBuilder)
 import RegexBuilder
 #endif
@@ -85,6 +86,10 @@ internal extension ZipCode {
     }
     #endif
 }
+
+// MARK: - AttributeCodable
+
+extension ZipCode: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

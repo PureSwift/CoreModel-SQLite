@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller  on 4/15/25.
 //
 
+import CoreModel
+
 /// ProfessionalDriver Driver Type
 public enum DriverType: String, Codable, CaseIterable, Sendable {
 
@@ -17,6 +19,12 @@ public enum DriverType: String, Codable, CaseIterable, Sendable {
     /// Fleet
     case fleet = "TF"
 }
+
+// MARK: - AttributeCodable
+
+extension DriverType: AttributeCodable {}
+
+// MARK: - CustomStringConvertible
 
 extension DriverType: CustomStringConvertible {
     public var description: String {
