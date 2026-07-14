@@ -9,6 +9,7 @@ import Foundation
 import CoreModel
 
 /// ProfessionalDriver Parking Reservation
+@Entity
 public struct ParkingReservation: Equatable, Hashable, Codable, Identifiable, Sendable, CachedEntity {
 
     public let id: ID
@@ -118,54 +119,6 @@ public struct ParkingReservation: Equatable, Hashable, Codable, Identifiable, Se
         case truckMake
         case truckColor
         case lastCached
-    }
-}
-
-extension ParkingReservation: Entity {
-
-    public static var entityName: EntityName {
-        "ParkingReservation"
-    }
-
-    public static var attributes: [CodingKeys: AttributeType] {
-        [
-            .deviceID: .string,
-            .created: .date,
-            .start: .date,
-            .end: .date,
-            .confirmationNumber: .string,
-            .productName: .string,
-            .paymentType: .string,
-            .totalCost: .double,
-            .firstName: .string,
-            .lastName: .string,
-            .email: .string,
-            .phone: .string,
-            .notificationType: .string,
-            .assetTruckNumber: .string,
-            .truckMake: .string,
-            .truckColor: .string,
-            .lastCached: .date
-        ]
-    }
-
-    public static var relationships: [CodingKeys: Relationship] {
-        [
-            .site: Relationship(
-                id: .site,
-                entity: ParkingReservation.self,
-                destination: Site.self,
-                type: .toOne,
-                inverseRelationship: .parkingReservations
-            ),
-            .user: Relationship(
-                id: .user,
-                entity: ParkingReservation.self,
-                destination: User.self,
-                type: .toOne,
-                inverseRelationship: .parkingReservations
-            )
-        ]
     }
 }
 

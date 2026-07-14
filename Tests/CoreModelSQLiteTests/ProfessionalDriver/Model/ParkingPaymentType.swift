@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 7/23/25.
 //
 
+import CoreModel
+
 /// Parking Payment Type
 public enum ParkingPaymentType: String, Codable, CaseIterable, Sendable {
 
@@ -20,3 +22,7 @@ public enum ParkingPaymentType: String, Codable, CaseIterable, Sendable {
     /// Cash
     case cash = "Cash"
 }
+
+// MARK: - AttributeCodable
+
+extension ParkingPaymentType: AttributeCodable {}

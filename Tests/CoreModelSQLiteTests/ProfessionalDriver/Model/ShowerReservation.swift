@@ -9,6 +9,7 @@ import Foundation
 import CoreModel
 
 /// ProfessionalDriver Shower Reservation
+@Entity
 public struct ShowerReservation: Equatable, Hashable, Codable, Sendable, CachedEntity {
 
     public let id: ID
@@ -63,47 +64,6 @@ public struct ShowerReservation: Equatable, Hashable, Codable, Sendable, CachedE
         case price
         case created
         case lastCached
-    }
-}
-
-extension ShowerReservation: Entity {
-
-    public static var entityName: EntityName {
-        "ShowerReservation"
-    }
-
-    public static var attributes: [CodingKeys: AttributeType] {
-        [
-            .driver: .string,
-            .message: .string,
-            .paymentType: .string,
-            .price: .double,
-            .status: .string,
-            .showerNumber: .string,
-            .pinNumber: .string,
-            .unlockingEnabled: .bool,
-            .created: .date,
-            .lastCached: .date
-        ]
-    }
-
-    public static var relationships: [CodingKeys: Relationship] {
-        [
-            .site: Relationship(
-                id: .site,
-                entity: ShowerReservation.self,
-                destination: Site.self,
-                type: .toOne,
-                inverseRelationship: .showerReservations
-            ),
-            .user: Relationship(
-                id: .user,
-                entity: ShowerReservation.self,
-                destination: User.self,
-                type: .toOne,
-                inverseRelationship: .showerReservations
-            )
-        ]
     }
 }
 

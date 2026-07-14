@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 10/2/25.
 //
 
+import CoreModel
+
 /// TA Store Vendor
 public enum StoreVendor: String, Codable, Sendable, CaseIterable {
 
@@ -16,3 +18,7 @@ public enum StoreVendor: String, Codable, Sendable, CaseIterable {
     case goasis = "Goasis"
     case qsl = "QSL"
 }
+
+// MARK: - AttributeCodable
+
+extension StoreVendor: AttributeCodable {}

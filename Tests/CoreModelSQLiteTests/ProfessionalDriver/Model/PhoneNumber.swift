@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 /// Phone Number
 public struct PhoneNumber: RawRepresentable, Codable, Equatable, Hashable, Sendable {
@@ -57,6 +58,10 @@ public extension PhoneNumber {
         return true
     }
 }
+
+// MARK: - AttributeCodable
+
+extension PhoneNumber: AttributeCodable {}
 
 // MARK: - ExpressibleByStringLiteral
 

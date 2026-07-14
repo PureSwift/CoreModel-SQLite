@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 /// Location Identifier
 public struct LocationID: RawRepresentable, Codable, Equatable, Hashable, Sendable {
@@ -25,6 +26,10 @@ extension LocationID: ExpressibleByIntegerLiteral {
         self.init(rawValue: value)
     }
 }
+
+// MARK: - AttributeCodable
+
+extension LocationID: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

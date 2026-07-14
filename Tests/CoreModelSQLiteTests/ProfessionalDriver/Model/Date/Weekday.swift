@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 public extension Date {
 
@@ -26,6 +27,10 @@ public extension Date {
         case saturday
     }
 }
+
+// MARK: - AttributeCodable
+
+extension Date.Weekday: AttributeCodable {}
 
 // MARK: - Comparable
 

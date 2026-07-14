@@ -79,7 +79,7 @@ extension FuelProduct.ID: CustomStringConvertible {
 
 extension FuelProduct.ID: ObjectIDConvertible {
 
-    public init(objectID: ObjectID) {
+    public init?(objectID: ObjectID) {
         self.init(rawValue: objectID.rawValue)
     }
 }

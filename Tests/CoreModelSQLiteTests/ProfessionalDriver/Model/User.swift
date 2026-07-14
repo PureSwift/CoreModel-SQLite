@@ -214,6 +214,10 @@ extension User.Birthday: RawRepresentable, CustomDateRawRepresentable, CustomStr
     }
 }
 
+// MARK: - AttributeCodable
+
+extension User.Birthday: AttributeCodable {}
+
 internal extension User.Birthday {
 
     init(_ date: Date.MM_DD) {

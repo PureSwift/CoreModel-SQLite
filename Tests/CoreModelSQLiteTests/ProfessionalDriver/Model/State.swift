@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 8/29/23.
 //
 
+import CoreModel
+
 /// Enum representing U.S. states and the Canadian province of Ontario.
 public enum TerritorialState: Equatable, Hashable, Codable, Sendable {
 
@@ -45,6 +47,10 @@ extension TerritorialState: RawRepresentable {
         }
     }
 }
+
+// MARK: - AttributeCodable
+
+extension TerritorialState: AttributeCodable {}
 
 // MARK: - CustomStringConvertible
 

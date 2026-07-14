@@ -5,6 +5,8 @@
 //  Created by Alsey Coleman Miller on 11/12/25.
 //
 
+import CoreModel
+
 /// ProfessionalDriver Shower Credit Card Type
 public enum ShowerCreditCardType: String, Codable, CaseIterable, Sendable {
 
@@ -13,3 +15,7 @@ public enum ShowerCreditCardType: String, Codable, CaseIterable, Sendable {
     case discover = "DISCOVER"
     case americanExpress = "AMERICAN EXPRESS"
 }
+
+// MARK: - AttributeCodable
+
+extension ShowerCreditCardType: AttributeCodable {}

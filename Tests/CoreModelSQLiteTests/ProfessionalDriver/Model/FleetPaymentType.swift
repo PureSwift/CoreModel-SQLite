@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreModel
 
 /// PumpSmart Fleet Payment Identifier
 public struct FleetPaymentType: Equatable, Hashable, Codable, Sendable, RawRepresentable {
@@ -19,6 +20,10 @@ public struct FleetPaymentType: Equatable, Hashable, Codable, Sendable, RawRepre
         self.rawValue = rawValue
     }
 }
+
+// MARK: - AttributeCodable
+
+extension FleetPaymentType: AttributeCodable {}
 
 // MARK: - ExpressibleByIntegerLiteral
 
