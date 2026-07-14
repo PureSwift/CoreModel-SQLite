@@ -90,7 +90,7 @@ jobs:
     - name: Build
       run: >
         xcodebuild build -scheme CoreModel-SQLite
-        -destination "generic/platform=iOS Simulator"
+        -destination "generic/platform=iOS"
         -configuration ${{ matrix.config == 'release' && 'Release' || 'Debug' }}
         -skipMacroValidation -skipPackagePluginValidation
     - name: Test
@@ -99,6 +99,7 @@ jobs:
         -destination "id=${{ env.DEVICE_ID }}"
         -configuration ${{ matrix.config == 'release' && 'Release' || 'Debug' }}
         -skipMacroValidation -skipPackagePluginValidation
+        ENABLE_TESTABILITY=YES
 
   android-test:
     name: Android Test
