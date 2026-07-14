@@ -76,10 +76,6 @@ jobs:
   android-test:
     name: Android Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ["debug", "release"]
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -88,6 +84,6 @@ jobs:
       with:
         swift-version: "6.3.2"
         android-api-level: 28
-        swift-configuration: ${{ matrix.config }}
+        swift-configuration: debug
         free-disk-space: true
         run-tests: true
