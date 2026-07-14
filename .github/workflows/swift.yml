@@ -71,7 +71,34 @@ jobs:
         ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" \
           bash "$HOME/Library/org.swift.swiftpm/swift-sdks/swift-${{ env.SWIFT_VERSION }}-RELEASE_android.artifactbundle/swift-android/scripts/setup-android-sdk.sh"
     - name: Build
-      run: swift build --swift-sdk aarch64-unknown-linux-android28 -c ${{ matrix.config }}
+      run: TARGET_OS_ANDROID=1 swift build --swift-sdk aarch64-unknown-linux-android28 -c ${{ matrix.config }}
+
+  ios:
+    name: iOS
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ["debug", "release"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Select Simulator
+      run: |
+        DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; devices=[v for vs in d.values() for v in vs if 'iPhone' in v['name']]; print(devices[0]['udid'])")
+        echo "DEVICE_ID=${DEVICE_ID}" >> "$GITHUB_ENV"
+    - name: Build
+      run: >
+        xcodebuild build -scheme CoreModel-SQLite
+        -destination "generic/platform=iOS Simulator"
+        -configuration ${{ matrix.config == 'release' && 'Release' || 'Debug' }}
+        -skipMacroValidation -skipPackagePluginValidation
+    - name: Test
+      run: >
+        xcodebuild test -scheme CoreModel-SQLite
+        -destination "id=${{ env.DEVICE_ID }}"
+        -configuration ${{ matrix.config == 'release' && 'Release' || 'Debug' }}
+        -skipMacroValidation -skipPackagePluginValidation
 
   android-test:
     name: Android Test
