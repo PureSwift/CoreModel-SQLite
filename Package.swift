@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -22,7 +22,8 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/stephencelis/SQLite.swift.git",
-            from: "0.16.0"
+            from: "0.16.0",
+            traits: ["SQLiteSwiftCSQLite"]
         )
     ],
     targets: [
