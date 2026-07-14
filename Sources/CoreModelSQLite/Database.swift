@@ -18,6 +18,19 @@ public actor SQLiteDatabase {
 
     internal let connection: SQLite.Connection
 
+    /// Fetched objects by entity and ID, mirroring CoreData's row cache: a repeated
+    /// `fetch(_:for:)` returns the cached value without touching SQLite, skipping both
+    /// the row query and the per-relationship queries that derive to-many values.
+    /// Predicate fetches also register their results, so ID lookups following a list
+    /// fetch are free.
+    ///
+    /// Writes drop the cached objects of every entity whose stored or derived values
+    /// they can change (see `invalidateCache(for:)`). The cache assumes this
+    /// actor is the database's only writer — the same coherency contract as separate
+    /// CoreData stacks on one store file. `SQLiteViewContext` reads its own connection
+    /// directly and always observes committed state.
+    internal var cache = [EntityName: [ObjectID: ModelData]]()
+
     /// Creates the schema eagerly, synchronously, as part of initialization — not lazily
     /// on first use. A `SQLiteViewContext` opens its own read-only connection to the same
     /// file and, being read-only, can never create the schema itself; without this, a
@@ -45,12 +58,24 @@ extension SQLiteDatabase: ModelStorage {
 
     public func fetch(_ entity: EntityName, for id: ObjectID) async throws -> ModelData? {
         try await asyncYield()
-        return try connection.fetch(entity, for: id, model: model)
+        if let cached = cache[entity]?[id] {
+            return cached
+        }
+        let value = try connection.fetch(entity, for: id, model: model)
+        if let value {
+            cache[entity, default: [:]][id] = value
+        }
+        return value
     }
 
     public func fetch(_ fetchRequest: FetchRequest) async throws -> [ModelData] {
         try await asyncYield()
-        return try connection.fetch(fetchRequest, model: model)
+        let values = try connection.fetch(fetchRequest, model: model)
+        // register results so subsequent ID lookups are cache hits
+        for value in values {
+            cache[fetchRequest.entity, default: [:]][value.id] = value
+        }
+        return values
     }
 
     public func fetchID(_ fetchRequest: FetchRequest) async throws -> [ObjectID] {
@@ -66,21 +91,25 @@ extension SQLiteDatabase: ModelStorage {
     public func insert(_ value: ModelData) async throws {
         try await asyncYield()
         try connection.insert(value, model: model)
+        invalidateCache(for: [value.entity])
     }
 
     public func insert(_ values: [ModelData]) async throws {
         try await asyncYield()
         try connection.insert(values, model: model)
+        invalidateCache(for: Set(values.lazy.map { $0.entity }))
     }
 
     public func delete(_ entity: EntityName, for id: ObjectID) async throws {
         try await asyncYield()
         try connection.delete(entity, for: id, model: model)
+        invalidateCache(for: [entity])
     }
 
     public func delete(_ entity: EntityName, for ids: [ObjectID]) async throws {
         try await asyncYield()
         try connection.delete(entity, for: ids, model: model)
+        invalidateCache(for: [entity])
     }
 }
 
@@ -89,6 +118,28 @@ internal extension SQLiteDatabase {
     func asyncYield() async throws {
         await Task.yield()
         try Task.checkCancellation()
+    }
+
+    /// Drop cached objects of every entity a write to the given entities can affect.
+    ///
+    /// A write to entity E touches E's own table, the foreign key columns of E's
+    /// relationship destinations, and their shared join tables. Derived to-many values
+    /// are computed only from those same foreign keys and join tables, so the affected
+    /// set is exactly E plus E's destination entities — including E-typed rows other
+    /// than the one written (e.g. reassigning a person to a new team also changes the
+    /// old team's `members`), which is why whole entity caches are dropped rather than
+    /// single objects.
+    func invalidateCache(for entities: Set<EntityName>) {
+        var affected = entities
+        for entity in entities {
+            guard let description = model.entities.first(where: { $0.id == entity }) else { continue }
+            for relationship in description.relationships {
+                affected.insert(relationship.destinationEntity)
+            }
+        }
+        for entity in affected {
+            cache[entity] = nil
+        }
     }
 }
 
