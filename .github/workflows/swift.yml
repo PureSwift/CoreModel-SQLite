@@ -52,9 +52,15 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
     - name: Install Swift
-      uses: swift-actions/setup-swift@v2
-      with:
-        swift-version: ${{ env.SWIFT_VERSION }}
+      run: |
+        curl -O https://download.swift.org/swiftly/darwin/swiftly.pkg
+        installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+        ~/.swiftly/bin/swiftly init --assume-yes --skip-install
+        echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
+        source ~/.swiftly/env.sh
+        swiftly install ${{ env.SWIFT_VERSION }}
+        swiftly use ${{ env.SWIFT_VERSION }}
+        echo "$(swiftly use --print-location)/usr/bin" >> "$GITHUB_PATH"
     - name: Install Android NDK
       run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
     - name: Install Swift SDK for Android
@@ -81,8 +87,6 @@ jobs:
       uses: skiptools/swift-android-action@v2
       with:
         swift-version: "6.3.2"
-        custom-sdk-id: swift-6.3.2-RELEASE_android
-        custom-sdk-url: https://download.swift.org/swift-6.3.2-release/android-sdk/swift-6.3.2-RELEASE/swift-6.3.2-RELEASE_android.artifactbundle.tar.gz
         android-api-level: 28
         swift-configuration: ${{ matrix.config }}
         free-disk-space: true
