@@ -34,7 +34,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/PureSwift/CoreModel",
-            from: "2.7.1"
+            from: "2.7.2"
         ),
         sqliteDependency
     ],
