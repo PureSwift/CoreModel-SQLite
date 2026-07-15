@@ -359,6 +359,9 @@ internal extension FetchRequest {
                 return sort.property.rawValue.quotedIdentifier + (sort.ascending ? " ASC" : " DESC")
             }
             sql += " ORDER BY " + terms.joined(separator: ", ")
+        } else {
+            // match CoreData's default behavior of sorting by object ID when no sort descriptors are provided
+            sql += " ORDER BY \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) ASC"
         }
         if fetchLimit > 0 {
             sql += " LIMIT \(fetchLimit)"
