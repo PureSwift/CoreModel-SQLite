@@ -195,6 +195,24 @@ func makeDatabase() throws -> SQLiteDatabase {
     #expect(inCount == 2)
 }
 
+@Test func defaultSortByID() async throws {
+    let database = try makeDatabase()
+    // insert out of ID order, to ensure the default sort isn't just insertion order
+    let ids: [ObjectID] = ["person5", "person1", "person9", "person3", "person7"]
+    let people = ids.map { id in
+        ModelData(entity: "Person", id: id, attributes: ["name": .string("Person \(id.rawValue)")])
+    }
+    try await database.insert(people)
+
+    // no sort descriptors provided, should default to sorting by id, like CoreData
+    let request = FetchRequest(entity: "Person")
+    let results = try await database.fetch(request)
+    #expect(results.map { $0.id } == ids.sorted { $0.rawValue < $1.rawValue })
+
+    let fetchedIDs = try await database.fetchID(request)
+    #expect(fetchedIDs == ids.sorted { $0.rawValue < $1.rawValue })
+}
+
 @Test func toOneRelationship() async throws {
     let database = try makeDatabase()
     let team = ModelData(entity: "Team", id: "team1", attributes: ["name": .string("Red")])
