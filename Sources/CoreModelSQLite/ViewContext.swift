@@ -54,4 +54,13 @@ public final class SQLiteViewContext: ViewContext {
     public func count(_ fetchRequest: FetchRequest) throws -> UInt {
         try connection.count(fetchRequest, model: model)
     }
+
+    /// Registers a custom function on this context's read-only connection.
+    ///
+    /// Function registration is per-connection: a function registered with a
+    /// paired ``SQLiteDatabase`` must also be registered here to be usable from
+    /// queries run through this view context.
+    public func register(function: DatabaseFunction) throws {
+        connection.register(function: function)
+    }
 }

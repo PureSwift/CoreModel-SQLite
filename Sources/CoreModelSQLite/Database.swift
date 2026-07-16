@@ -111,6 +111,37 @@ extension SQLiteDatabase: ModelStorage {
         try connection.delete(entity, for: ids, model: model)
         invalidateCache(for: [entity])
     }
+
+    public func register(function: DatabaseFunction) async throws {
+        connection.register(function: function)
+    }
+}
+
+public extension SQLiteDatabase {
+
+    /// Execute raw SQL against the underlying connection — e.g. to create and
+    /// maintain an R*Tree or other virtual table. CoreModelSQLite does not create,
+    /// sync, or otherwise know about any virtual table itself; that is entirely the
+    /// caller's responsibility.
+    func execute(_ sql: String, _ bindings: [Binding?] = []) throws {
+        try connection.run(sql, bindings)
+    }
+}
+
+internal extension SQLite.Connection {
+
+    /// Registers a `DatabaseFunction` with this connection, bridging SQLite's untyped
+    /// `Binding` values to/from `AttributeValue` at the boundary.
+    func register(function: DatabaseFunction) {
+        createFunction(
+            function.name,
+            argumentCount: function.argumentCount.map { UInt($0) },
+            deterministic: function.deterministic
+        ) { arguments in
+            let values: [AttributeValue?] = arguments.map { AttributeValue(binding: $0) }
+            return function.evaluate(values)?.binding
+        }
+    }
 }
 
 internal extension SQLiteDatabase {
@@ -352,13 +383,23 @@ internal extension FetchRequest {
             bindings += fragment.bindings
         }
         if sortDescriptors.isEmpty == false {
-            let terms = try sortDescriptors.map { sort -> String in
-                guard entity.hasColumn(for: sort.property) else {
-                    throw SQLiteDatabaseError.invalidProperty(sort.property, entity.id)
+            let placeholderPredicate = FetchRequest.Predicate.value(true)
+            let fragments = try sortDescriptors.map { sort -> SQLFragment in
+                switch sort.term {
+                case let .property(property):
+                    guard entity.hasColumn(for: property) else {
+                        throw SQLiteDatabaseError.invalidProperty(property, entity.id)
+                    }
+                    let sql = property.rawValue.quotedIdentifier + (sort.ascending ? " ASC" : " DESC")
+                    return SQLFragment(sql: sql, bindings: [])
+                case let .function(function):
+                    let functionFragment = try function.sqlFragment(for: entity, predicate: placeholderPredicate)
+                    let sql = functionFragment.sql + (sort.ascending ? " ASC" : " DESC")
+                    return SQLFragment(sql: sql, bindings: functionFragment.bindings)
                 }
-                return sort.property.rawValue.quotedIdentifier + (sort.ascending ? " ASC" : " DESC")
             }
-            sql += " ORDER BY " + terms.joined(separator: ", ")
+            sql += " ORDER BY " + fragments.map(\.sql).joined(separator: ", ")
+            bindings += fragments.flatMap(\.bindings)
         } else {
             // match CoreData's default behavior of sorting by object ID when no sort descriptors are provided
             sql += " ORDER BY \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) ASC"

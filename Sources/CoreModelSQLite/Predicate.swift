@@ -74,6 +74,35 @@ internal extension FetchRequest.Predicate.Comparison {
         predicate: FetchRequest.Predicate
     ) throws -> SQLFragment {
 
+        // `function(...) <operator> constant` comparisons compile to a SQL function call.
+        if case let .function(function) = left {
+            guard modifier == nil else {
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+            let functionFragment = try function.sqlFragment(for: entity, predicate: predicate)
+            switch type {
+            case .lessThan, .lessThanOrEqualTo, .greaterThan, .greaterThanOrEqualTo:
+                let value = try right.constantBinding(predicate: predicate)
+                return SQLFragment(
+                    sql: "\(functionFragment.sql) \(type.rawValue) ?",
+                    bindings: functionFragment.bindings + [value]
+                )
+            case .equalTo, .notEqualTo:
+                let value = try right.constantBinding(predicate: predicate)
+                let sqlOperator = (type == .equalTo) ? "=" : "<>"
+                guard let value else {
+                    let nullOperator = (type == .equalTo) ? "IS NULL" : "IS NOT NULL"
+                    return SQLFragment(sql: "\(functionFragment.sql) \(nullOperator)", bindings: functionFragment.bindings)
+                }
+                return SQLFragment(
+                    sql: "\(functionFragment.sql) \(sqlOperator) ?",
+                    bindings: functionFragment.bindings + [value]
+                )
+            default:
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+        }
+
         // Only `keyPath <operator> constant` comparisons map directly to columns.
         guard case let .keyPath(keyPath) = left else {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
@@ -207,7 +236,42 @@ private extension SQLFragment {
     }
 }
 
+internal extension FetchRequest.Predicate.FunctionExpression {
+
+    /// Translate a function call expression into a SQL function-call fragment,
+    /// e.g. `myFunction("lat", "lon", ?, ?)`.
+    func sqlFragment(
+        for entity: EntityDescription,
+        predicate: FetchRequest.Predicate
+    ) throws -> SQLFragment {
+        let argumentFragments = try arguments.map {
+            try $0.argumentSQLFragment(for: entity, predicate: predicate)
+        }
+        return SQLFragment(
+            sql: "\(name)(" + argumentFragments.map(\.sql).joined(separator: ", ") + ")",
+            bindings: argumentFragments.flatMap(\.bindings)
+        )
+    }
+}
+
 private extension FetchRequest.Predicate.Expression {
+
+    /// The expression as a SQL fragment suitable for use as a function argument
+    /// (a column reference, a constant placeholder, or a nested function call).
+    func argumentSQLFragment(
+        for entity: EntityDescription,
+        predicate: FetchRequest.Predicate
+    ) throws -> SQLFragment {
+        switch self {
+        case let .keyPath(keyPath):
+            let column = try entity.validateColumn(PropertyKey(rawValue: keyPath.rawValue), predicate: predicate)
+            return SQLFragment(sql: column, bindings: [])
+        case let .function(function):
+            return try function.sqlFragment(for: entity, predicate: predicate)
+        case .attribute, .relationship:
+            return SQLFragment(sql: "?", bindings: [try constantBinding(predicate: predicate)])
+        }
+    }
 
     /// The expression as a single constant binding.
     func constantBinding(predicate: FetchRequest.Predicate) throws -> Binding? {
@@ -223,7 +287,7 @@ private extension FetchRequest.Predicate.Expression {
             case .toMany:
                 throw SQLiteDatabaseError.invalidPredicate(predicate)
             }
-        case .keyPath:
+        case .keyPath, .function:
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
     }
