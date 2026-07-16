@@ -43,6 +43,26 @@ internal extension AttributeValue {
         }
     }
 
+    /// Decode from a SQLite binding value with no declared attribute type (e.g. a
+    /// raw argument passed into a custom SQL function), inferring the value's shape
+    /// from the binding's runtime type.
+    init(binding: Binding?) {
+        switch binding {
+        case .none:
+            self = .null
+        case let value as Int64:
+            self = .int64(value)
+        case let value as Double:
+            self = .double(value)
+        case let value as String:
+            self = .string(value)
+        case let value as Blob:
+            self = .data(Data(value.bytes))
+        default:
+            self = .null
+        }
+    }
+
     /// Decode from a SQLite binding value, interpreting it according to the declared attribute type.
     init(binding: Binding?, type: AttributeType) throws {
         guard let binding else {
