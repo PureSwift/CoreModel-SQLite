@@ -36,7 +36,14 @@ let package = Package(
             url: "https://github.com/PureSwift/CoreModel",
             from: "2.8.0"
         ),
-        sqliteDependency
+        sqliteDependency,
+        // Off Apple platforms, SQLite.swift links the embedded SQLite from this package.
+        // We depend on it directly so we can call the SQLite C API (custom functions)
+        // where the system `SQLite3` module isn't available.
+        .package(
+            url: "https://github.com/stephencelis/CSQLite",
+            from: "3.50.4"
+        )
     ],
     targets: [
         .target(
@@ -46,6 +53,13 @@ let package = Package(
                 .product(
                     name: "SQLite",
                     package: "SQLite.swift"
+                ),
+                // On Apple platforms the SQLite C API comes from the system `SQLite3`
+                // module; elsewhere it comes from SQLite.swift's embedded copy.
+                .product(
+                    name: "SQLiteSwiftCSQLite",
+                    package: "CSQLite",
+                    condition: .when(platforms: [.linux, .android])
                 )
             ]
         ),

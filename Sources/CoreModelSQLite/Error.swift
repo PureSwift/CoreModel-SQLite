@@ -20,4 +20,7 @@ public enum SQLiteDatabaseError: Error {
 
     /// The predicate cannot be represented as SQL.
     case invalidPredicate(FetchRequest.Predicate)
+
+    /// A custom function could not be registered with SQLite. Carries the SQLite result code.
+    case unableToCreateFunction(String, Int32)
 }
