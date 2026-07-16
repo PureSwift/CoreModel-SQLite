@@ -114,13 +114,8 @@ extension SQLiteDatabase: ModelStorage {
 
     /// Registers a custom scalar function so it can be invoked from a predicate or sort
     /// descriptor via ``FetchRequest/Predicate/Expression/function(_:)``.
-    ///
-    /// - Important: Only supported on Apple platforms. The underlying SQLite.swift
-    ///   `createFunction` registers the callback through `@convention(block)` +
-    ///   `unsafeBitCast`, which is unreliable on non-Apple platforms and can corrupt
-    ///   SQLite's heap (upstream https://github.com/stephencelis/SQLite.swift/issues/1071).
     public func register(function: DatabaseFunction) async throws {
-        connection.register(function: function)
+        try connection.register(function: function)
     }
 }
 
@@ -132,22 +127,6 @@ public extension SQLiteDatabase {
     /// caller's responsibility.
     func execute(_ sql: String, _ bindings: [Binding?] = []) throws {
         try connection.run(sql, bindings)
-    }
-}
-
-internal extension SQLite.Connection {
-
-    /// Registers a `DatabaseFunction` with this connection, bridging SQLite's untyped
-    /// `Binding` values to/from `AttributeValue` at the boundary.
-    func register(function: DatabaseFunction) {
-        createFunction(
-            function.name,
-            argumentCount: function.argumentCount.map { UInt($0) },
-            deterministic: function.deterministic
-        ) { arguments in
-            let values: [AttributeValue?] = arguments.map { AttributeValue(binding: $0) }
-            return function.evaluate(values)?.binding
-        }
     }
 }
 

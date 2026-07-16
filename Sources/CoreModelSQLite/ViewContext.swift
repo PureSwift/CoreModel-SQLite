@@ -61,6 +61,6 @@ public final class SQLiteViewContext: ViewContext {
     /// paired ``SQLiteDatabase`` must also be registered here to be usable from
     /// queries run through this view context.
     public func register(function: DatabaseFunction) throws {
-        connection.register(function: function)
+        try connection.register(function: function)
     }
 }

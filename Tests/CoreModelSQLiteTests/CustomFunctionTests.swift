@@ -4,14 +4,6 @@ import CoreModel
 import SQLite
 @testable import CoreModelSQLite
 
-// Custom SQL functions are only exercised on Apple platforms: SQLite.swift's
-// `createFunction` registers the callback with `@convention(block)` + an
-// `unsafeBitCast` to a raw pointer, which is unreliable on non-Apple platforms
-// (the block pointer is invalid and corrupts SQLite's heap — upstream
-// https://github.com/stephencelis/SQLite.swift/issues/1071). Gate these tests to
-// Darwin so CI stays green until that is resolved.
-#if canImport(Darwin)
-
 /// A Haversine distance function, in meters, written directly in the test — CoreModelSQLite
 /// itself has no notion of "distance" or geo data; this exercises the generic
 /// `DatabaseFunction`/`.function` expression mechanism using a realistic example.
@@ -67,6 +59,18 @@ private struct SeededGenerator: RandomNumberGenerator {
         return z ^ (z >> 31)
     }
 }
+
+/// Whether this SQLite build includes the R*Tree module (an optional compile-time
+/// feature), determined by attempting to create an R*Tree virtual table in memory.
+private let isRTreeAvailable: Bool = {
+    guard let connection = try? Connection(.inMemory) else { return false }
+    do {
+        try connection.execute("CREATE VIRTUAL TABLE rtree_probe USING rtree(id, minX, maxX)")
+        return true
+    } catch {
+        return false
+    }
+}()
 
 private func distanceSort(ascending: Bool = true) -> FetchRequest.SortDescriptor {
     .init(term: .function(.init(name: "distance", arguments: [
@@ -251,7 +255,12 @@ private func randomSites(count: Int, seed: UInt64) -> [(id: ObjectID, latitude: 
 /// applies the exact `distance` function for correctness. The final result must match
 /// the brute-force in-memory oracle, and the prefilter must be sound (a superset of the
 /// exact matches) and actually prune.
-@Test func appManagedRTreePrefilter() async throws {
+///
+/// R*Tree is an optional SQLite compile-time feature (`SQLITE_ENABLE_RTREE`). It's present
+/// in the system SQLite on Apple platforms but not in the embedded SQLite used elsewhere,
+/// so this test is skipped where the `rtree` module is unavailable.
+@Test(.enabled(if: isRTreeAvailable, "R*Tree module not compiled into this SQLite build"))
+func appManagedRTreePrefilter() async throws {
     let path = temporaryDatabasePath(named: "GeoRTree")
     let database = try SQLiteDatabase(path: path, model: geoModel)
     try await database.register(function: distanceFunction)
@@ -323,4 +332,3 @@ private func randomSites(count: Int, seed: UInt64) -> [(id: ObjectID, latitude: 
     #expect(oracle.isEmpty == false)
 }
 
-#endif // canImport(Darwin)
