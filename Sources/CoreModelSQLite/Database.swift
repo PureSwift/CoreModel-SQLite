@@ -112,6 +112,13 @@ extension SQLiteDatabase: ModelStorage {
         invalidateCache(for: [entity])
     }
 
+    /// Registers a custom scalar function so it can be invoked from a predicate or sort
+    /// descriptor via ``FetchRequest/Predicate/Expression/function(_:)``.
+    ///
+    /// - Important: Only supported on Apple platforms. The underlying SQLite.swift
+    ///   `createFunction` registers the callback through `@convention(block)` +
+    ///   `unsafeBitCast`, which is unreliable on non-Apple platforms and can corrupt
+    ///   SQLite's heap (upstream https://github.com/stephencelis/SQLite.swift/issues/1071).
     public func register(function: DatabaseFunction) async throws {
         connection.register(function: function)
     }
