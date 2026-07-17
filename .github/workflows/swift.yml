@@ -38,6 +38,21 @@ jobs:
     - name: Test
       run: swift test -c ${{ matrix.config }}
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.3.2-release
+          tag: 6.3.2-RELEASE
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build -v
+      - name: Test
+        run: swift test -v
+
   skip-fuse:
     name: Skip Fuse (Android)
     runs-on: macos-26
