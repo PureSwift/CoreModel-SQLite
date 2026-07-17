@@ -25,7 +25,7 @@ internal extension SchemaChanger {
 
 internal extension SchemaChanger.CreateTableDefinition {
     
-    func addColumns(_ entity: EntityDescription) {
+    mutating func addColumns(_ entity: EntityDescription) {
         
         // add ID column
         let id = ColumnDefinition(

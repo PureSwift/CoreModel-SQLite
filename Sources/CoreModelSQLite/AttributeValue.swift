@@ -12,34 +12,36 @@ import SQLite
 internal extension AttributeValue {
 
     /// Convert to a SQLite binding value.
+    ///
+    /// `nil` represents a SQL `NULL`.
     var binding: Binding? {
         switch self {
         case .null:
             return nil
         case let .string(value):
-            return value
+            return .text(value)
         case let .uuid(value):
-            return value.uuidString
+            return .text(value.uuidString)
         case let .url(value):
-            return value.absoluteString
+            return .text(value.absoluteString)
         case let .data(value):
-            return Blob(bytes: [UInt8](value))
+            return Blob(bytes: [UInt8](value)).binding
         case let .date(value):
-            return value.timeIntervalSince1970
+            return .double(value.timeIntervalSince1970)
         case let .bool(value):
-            return Int64(value ? 1 : 0)
+            return .integer(value ? 1 : 0)
         case let .int16(value):
-            return Int64(value)
+            return .integer(Int64(value))
         case let .int32(value):
-            return Int64(value)
+            return .integer(Int64(value))
         case let .int64(value):
-            return value
+            return .integer(value)
         case let .float(value):
-            return Double(value)
+            return .double(Double(value))
         case let .double(value):
-            return value
+            return .double(value)
         case let .decimal(value):
-            return value.description
+            return .text(value.description)
         }
     }
 
@@ -81,27 +83,27 @@ internal extension AttributeValue {
             }
             self = .double(value)
         case .string:
-            guard let value = binding as? String else {
+            guard let value = binding.textValue else {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
             self = .string(value)
         case .data:
-            guard let value = binding as? Blob else {
+            guard let value = binding.blobValue else {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
-            self = .data(Data(value.bytes))
+            self = .data(Data(value))
         case .date:
             guard let value = binding.doubleValue else {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
             self = .date(Date(timeIntervalSince1970: value))
         case .uuid:
-            guard let string = binding as? String, let value = UUID(uuidString: string) else {
+            guard let string = binding.textValue, let value = UUID(uuidString: string) else {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
             self = .uuid(value)
         case .url:
-            guard let string = binding as? String, let value = URL(string: string) else {
+            guard let string = binding.textValue, let value = URL(string: string) else {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
             self = .url(value)
@@ -114,43 +116,44 @@ internal extension AttributeValue {
     }
 }
 
-private extension Binding {
+internal extension Binding {
 
+    /// The integer value, converting `REAL` and `TEXT` where possible.
     var int64Value: Int64? {
-        switch self {
-        case let value as Int64:
-            return value
-        case let value as Double:
-            return Int64(exactly: value)
-        case let value as String:
-            return Int64(value)
-        default:
-            return nil
-        }
+        integer
     }
 
+    /// The floating-point value, converting `INTEGER` and `TEXT` where possible.
     var doubleValue: Double? {
-        switch self {
-        case let value as Double:
-            return value
-        case let value as Int64:
-            return Double(value)
-        case let value as String:
-            return Double(value)
-        default:
-            return nil
-        }
+        double
     }
 
+    /// The stored text value, without converting numeric storage classes to text.
+    var textValue: String? {
+        guard case let .text(value) = self else {
+            return nil
+        }
+        return value
+    }
+
+    /// The stored blob bytes, only for `BLOB` values.
+    var blobValue: [UInt8]? {
+        guard case .blob = self else {
+            return nil
+        }
+        return bytes
+    }
+
+    /// The decimal value, parsed from `TEXT` or converted from a numeric storage class.
     var decimalValue: Decimal? {
         switch self {
-        case let value as String:
+        case let .text(value):
             return Decimal(string: value)
-        case let value as Double:
+        case let .double(value):
             return Decimal(value)
-        case let value as Int64:
+        case let .integer(value):
             return Decimal(value)
-        default:
+        case .blob, .null:
             return nil
         }
     }

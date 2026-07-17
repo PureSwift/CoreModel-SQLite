@@ -17,7 +17,7 @@ internal extension ModelData {
     /// foreign key columns. To-many relationships are not stored on this table.
     func columnValues(for entity: EntityDescription) throws -> [(column: String, binding: Binding?)] {
         assert(entity.id == self.entity)
-        var values: [(String, Binding?)] = [(SQLiteDatabase.primaryKeyColumn, id.rawValue)]
+        var values: [(String, Binding?)] = [(SQLiteDatabase.primaryKeyColumn, id.rawValue.binding)]
         values.reserveCapacity(1 + entity.attributes.count + entity.relationships.count)
         for attribute in entity.attributes {
             let value = attributes[attribute.id] ?? .null
@@ -29,7 +29,7 @@ internal extension ModelData {
             case .null:
                 binding = nil
             case let .toOne(objectID):
-                binding = objectID.rawValue
+                binding = objectID.rawValue.binding
             case .toMany:
                 throw SQLiteDatabaseError.invalidProperty(relationship.id, entity.id)
             }
@@ -58,7 +58,7 @@ internal extension ModelData {
     /// to-many relationships require separate queries and are filled in by the database.
     init(row: [String: Binding?], entity: EntityDescription) throws {
         guard let idBinding = row[SQLiteDatabase.primaryKeyColumn] ?? nil,
-              let idString = idBinding as? String else {
+              let idString = idBinding.textValue else {
             throw SQLiteDatabaseError.invalidBinding(row[SQLiteDatabase.primaryKeyColumn] ?? nil, .string)
         }
         var attributes = [PropertyKey: AttributeValue]()
@@ -71,7 +71,7 @@ internal extension ModelData {
         relationships.reserveCapacity(entity.relationships.count)
         for relationship in entity.relationships where relationship.type == .toOne {
             let binding = row[relationship.id.rawValue] ?? nil
-            if let string = binding as? String {
+            if let string = binding?.textValue {
                 relationships[relationship.id] = .toOne(ObjectID(rawValue: string))
             } else {
                 relationships[relationship.id] = .null
@@ -86,19 +86,3 @@ internal extension ModelData {
     }
 }
 
-internal extension Statement {
-
-    /// Iterate rows as dictionaries keyed by column name.
-    func rowDictionaries() throws -> [[String: Binding?]] {
-        let columnNames = self.columnNames
-        var results = [[String: Binding?]]()
-        while let row = try failableNext() {
-            var dictionary = [String: Binding?](minimumCapacity: columnNames.count)
-            for (index, name) in columnNames.enumerated() {
-                dictionary[name] = row[index]
-            }
-            results.append(dictionary)
-        }
-        return results
-    }
-}

@@ -92,7 +92,7 @@ internal struct JoinTable {
 
 internal extension JoinTable {
 
-    func create(connection: Connection) throws {
+    func create(connection: borrowing Connection) throws {
         let sql = """
         CREATE TABLE IF NOT EXISTS \(name.quotedIdentifier) (
         \(thisColumn.quotedIdentifier) TEXT NOT NULL,
@@ -104,38 +104,38 @@ internal extension JoinTable {
     }
 
     /// Fetch the object IDs linked to the specified object.
-    func fetch(_ id: ObjectID, connection: Connection) throws -> [ObjectID] {
+    func fetch(_ id: ObjectID, connection: borrowing Connection) throws -> [ObjectID] {
         var sql = "SELECT \(otherColumn.quotedIdentifier) FROM \(name.quotedIdentifier) WHERE \(thisColumn.quotedIdentifier) = ?"
-        var bindings: [Binding?] = [id.rawValue]
+        var bindings: [Binding?] = [id.rawValue.binding]
         if isSymmetric {
             sql += " UNION SELECT \(thisColumn.quotedIdentifier) FROM \(name.quotedIdentifier) WHERE \(otherColumn.quotedIdentifier) = ?"
-            bindings.append(id.rawValue)
+            bindings.append(id.rawValue.binding)
         }
         let statement = try connection.prepare(sql, bindings)
         var results = [ObjectID]()
         while let row = try statement.failableNext() {
-            guard let value = row[0] as? String else { continue }
+            guard let value = row[0]?.textValue else { continue }
             results.append(ObjectID(rawValue: value))
         }
         return results
     }
 
     /// Replace all links of the specified object with the provided destination IDs.
-    func replace(_ id: ObjectID, with destinationIDs: [ObjectID], connection: Connection) throws {
+    func replace(_ id: ObjectID, with destinationIDs: [ObjectID], connection: borrowing Connection) throws {
         try removeAll(id, connection: connection)
         let sql = "INSERT OR IGNORE INTO \(name.quotedIdentifier) (\(thisColumn.quotedIdentifier), \(otherColumn.quotedIdentifier)) VALUES (?, ?)"
         for destination in destinationIDs {
-            try connection.run(sql, [id.rawValue, destination.rawValue])
+            try connection.run(sql, [id.rawValue.binding, destination.rawValue.binding])
         }
     }
 
     /// Remove all links involving the specified object.
-    func removeAll(_ id: ObjectID, connection: Connection) throws {
+    func removeAll(_ id: ObjectID, connection: borrowing Connection) throws {
         var sql = "DELETE FROM \(name.quotedIdentifier) WHERE \(thisColumn.quotedIdentifier) = ?"
-        var bindings: [Binding?] = [id.rawValue]
+        var bindings: [Binding?] = [id.rawValue.binding]
         if isSymmetric {
             sql += " OR \(otherColumn.quotedIdentifier) = ?"
-            bindings.append(id.rawValue)
+            bindings.append(id.rawValue.binding)
         }
         try connection.run(sql, bindings)
     }
