@@ -1,6 +1,14 @@
 // swift-tools-version: 6.1
 import PackageDescription
-import Foundation
+import CompilerPluginSupport
+import class Foundation.ProcessInfo
+
+// get environment variables
+let environment = ProcessInfo.processInfo.environment
+let dynamicLibrary = environment["SWIFT_BUILD_DYNAMIC_LIBRARY"] == "1"
+
+// force building as dynamic library
+let libraryType: PackageDescription.Product.Library.LibraryType? = dynamicLibrary ? .dynamic : nil
 
 let package = Package(
     name: "CoreModel-SQLite",
@@ -13,6 +21,7 @@ let package = Package(
     products: [
         .library(
             name: "CoreModelSQLite",
+            type: libraryType,
             targets: ["CoreModelSQLite"]
         )
     ],
