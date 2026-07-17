@@ -232,7 +232,7 @@ internal extension FetchRequest.Predicate.Comparison {
 private extension SQLFragment {
 
     static func like(column: String, pattern: String) -> SQLFragment {
-        SQLFragment(sql: "\(column) LIKE ? ESCAPE '\\'", bindings: [pattern])
+        SQLFragment(sql: "\(column) LIKE ? ESCAPE '\\'", bindings: [pattern.binding])
     }
 }
 
@@ -283,7 +283,7 @@ private extension FetchRequest.Predicate.Expression {
             case .null:
                 return nil
             case let .toOne(objectID):
-                return objectID.rawValue
+                return objectID.rawValue.binding
             case .toMany:
                 throw SQLiteDatabaseError.invalidPredicate(predicate)
             }
@@ -296,7 +296,7 @@ private extension FetchRequest.Predicate.Expression {
     func constantBindings(predicate: FetchRequest.Predicate) throws -> [Binding?] {
         switch self {
         case let .relationship(.toMany(objectIDs)):
-            return objectIDs.map { $0.rawValue }
+            return objectIDs.map { $0.rawValue.binding }
         default:
             return [try constantBinding(predicate: predicate)]
         }

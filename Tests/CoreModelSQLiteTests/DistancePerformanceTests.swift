@@ -109,22 +109,21 @@ struct DistancePerformanceBenchmarks {
 
         #expect(try await database.fetch(sqlRequest).count == benchmarkInMemory(try await database.fetch(allRequest), radius: radius).count)
 
-        let clock = ContinuousClock()
         var sqlMatches = 0
-        let sqlStart = clock.now
+        let sqlStart = Date()
         for _ in 0..<benchmarkIterations { sqlMatches = try await database.fetch(sqlRequest).count }
-        let sqlTime = clock.now - sqlStart
+        let sqlTime = Date().timeIntervalSince(sqlStart)
 
         var memMatches = 0
-        let memStart = clock.now
+        let memStart = Date()
         for _ in 0..<benchmarkIterations { memMatches = benchmarkInMemory(try await database.fetch(allRequest), radius: radius).count }
-        let memTime = clock.now - memStart
+        let memTime = Date().timeIntervalSince(memStart)
 
         print("""
 
         ===== Selective filter+sort: \(benchmarkRowCount) rows, \(sqlMatches) matches, \(benchmarkIterations) iterations =====
-        SQL (filter+sort in SQLite): avg \(sqlTime / benchmarkIterations)
-        in-memory (fetch-all + Swift): avg \(memTime / benchmarkIterations)
+        SQL (filter+sort in SQLite): avg \(sqlTime / Double(benchmarkIterations)) seconds
+        in-memory (fetch-all + Swift): avg \(memTime / Double(benchmarkIterations)) seconds
         """)
         #expect(sqlMatches == memMatches)
     }
@@ -139,22 +138,21 @@ struct DistancePerformanceBenchmarks {
         // no radius filter: `.infinity` keeps every row
         #expect(try await database.fetch(sqlRequest).map(\.id) == benchmarkInMemory(try await database.fetch(allRequest), radius: .infinity))
 
-        let clock = ContinuousClock()
         var sqlCount = 0
-        let sqlStart = clock.now
+        let sqlStart = Date()
         for _ in 0..<benchmarkIterations { sqlCount = try await database.fetch(sqlRequest).count }
-        let sqlTime = clock.now - sqlStart
+        let sqlTime = Date().timeIntervalSince(sqlStart)
 
         var memCount = 0
-        let memStart = clock.now
+        let memStart = Date()
         for _ in 0..<benchmarkIterations { memCount = benchmarkInMemory(try await database.fetch(allRequest), radius: .infinity).count }
-        let memTime = clock.now - memStart
+        let memTime = Date().timeIntervalSince(memStart)
 
         print("""
 
         ===== Sort, no filter: \(benchmarkRowCount) rows returned, \(benchmarkIterations) iterations =====
-        SQL (ORDER BY in SQLite): avg \(sqlTime / benchmarkIterations)
-        in-memory (fetch-all + Swift sort): avg \(memTime / benchmarkIterations)
+        SQL (ORDER BY in SQLite): avg \(sqlTime / Double(benchmarkIterations)) seconds
+        in-memory (fetch-all + Swift sort): avg \(memTime / Double(benchmarkIterations)) seconds
         """)
         #expect(sqlCount == memCount)
     }

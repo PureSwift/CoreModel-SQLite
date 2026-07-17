@@ -2,21 +2,6 @@
 import PackageDescription
 import Foundation
 
-// Android has no system libsqlite3, so it needs SQLite.swift's embedded
-// copy. macOS and Linux keep SQLite.swift's own default for the platform.
-let isAndroid = ProcessInfo.processInfo.environment["TARGET_OS_ANDROID"] == "1"
-
-let sqliteDependency: Package.Dependency = isAndroid
-    ? .package(
-        url: "https://github.com/stephencelis/SQLite.swift.git",
-        from: "0.16.0",
-        traits: ["SQLiteSwiftCSQLite"]
-    )
-    : .package(
-        url: "https://github.com/stephencelis/SQLite.swift.git",
-        from: "0.16.0"
-    )
-
 let package = Package(
     name: "CoreModel-SQLite",
     platforms: [
@@ -36,13 +21,12 @@ let package = Package(
             url: "https://github.com/PureSwift/CoreModel",
             from: "2.8.0"
         ),
-        sqliteDependency,
-        // Off Apple platforms, SQLite.swift links the embedded SQLite from this package.
-        // We depend on it directly so we can call the SQLite C API (custom functions)
-        // where the system `SQLite3` module isn't available.
+        // PureSwift/SQLite wraps the system SQLite3 on Apple platforms and links
+        // an embedded SQLite (via swift-sqlcipher) everywhere else, so no separate
+        // C SQLite dependency or per-platform branching is needed here.
         .package(
-            url: "https://github.com/stephencelis/CSQLite",
-            from: "3.50.4"
+            url: "https://github.com/PureSwift/SQLite",
+            branch: "master"
         )
     ],
     targets: [
@@ -52,14 +36,7 @@ let package = Package(
                 "CoreModel",
                 .product(
                     name: "SQLite",
-                    package: "SQLite.swift"
-                ),
-                // On Apple platforms the SQLite C API comes from the system `SQLite3`
-                // module; elsewhere it comes from SQLite.swift's embedded copy.
-                .product(
-                    name: "SQLiteSwiftCSQLite",
-                    package: "CSQLite",
-                    condition: .when(platforms: [.linux, .android])
+                    package: "SQLite"
                 )
             ]
         ),

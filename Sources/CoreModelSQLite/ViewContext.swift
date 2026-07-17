@@ -23,14 +23,14 @@ public final class SQLiteViewContext: ViewContext {
         _ location: SQLite.Connection.Location,
         model: Model
     ) throws {
-        let connection = try SQLite.Connection.init(location, readonly: true)
+        let connection = try SQLite.Connection(path: location, isReadOnly: true)
         self.model = model
         self.connection = connection
     }
-    
+
     /// Open or create a database file at the specified path.
     init(path: String, model: Model) throws {
-        let connection = try SQLite.Connection.init(path, readonly: true)
+        let connection = try SQLite.Connection(path: path, isReadOnly: true)
         self.model = model
         self.connection = connection
     }

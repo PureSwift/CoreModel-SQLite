@@ -36,12 +36,12 @@ public actor SQLiteDatabase {
     /// file and, being read-only, can never create the schema itself; without this, a
     /// fetch through the view context before any write happens throws "no such table".
     public init(
-        connection: SQLite.Connection,
+        connection: consuming SQLite.Connection,
         model: Model
     ) throws {
-        self.connection = connection
         self.model = model
         try connection.createTables(model: model)
+        self.connection = connection
     }
 }
 
@@ -49,7 +49,7 @@ public extension SQLiteDatabase {
 
     /// Open or create a database file at the specified path.
     init(path: String, model: Model) throws {
-        let connection = try Connection(path)
+        let connection = try Connection(path: path)
         try self.init(connection: connection, model: model)
     }
 }
@@ -178,7 +178,7 @@ internal extension Connection {
     func fetch(_ entity: EntityName, for id: ObjectID, model: Model) throws -> ModelData? {
         let entityDescription = try model.entity(entity)
         let sql = "SELECT * FROM \(entity.rawValue.quotedIdentifier) WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) = ?"
-        let statement = try prepare(sql, [id.rawValue])
+        let statement = try prepare(sql, [id.rawValue.binding])
         guard let row = try statement.rowDictionaries().first else {
             return nil
         }
@@ -210,7 +210,7 @@ internal extension Connection {
         let statement = try prepare(query.sql, query.bindings)
         var results = [ObjectID]()
         while let row = try statement.failableNext() {
-            guard let value = row[0] as? String else { continue }
+            guard let value = row[0]?.textValue else { continue }
             results.append(ObjectID(rawValue: value))
         }
         return results
@@ -219,7 +219,7 @@ internal extension Connection {
     func count(_ fetchRequest: FetchRequest, model: Model) throws -> UInt {
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
-        guard let count = try scalar(query.sql, query.bindings) as? Int64 else {
+        guard let count = try scalar(query.sql, query.bindings)?.integer else {
             return 0
         }
         return UInt(count)
@@ -250,7 +250,7 @@ internal extension Connection {
                     case .toOne:
                         // one/many-to-many: nullify the foreign key on the destination table
                         let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                        try run(sql, [id.rawValue])
+                        try run(sql, [id.rawValue.binding])
                     case .toMany:
                         // many-to-many: drop this row's links from the join table
                         let joinTable = JoinTable(entity: entity, relationship: relationship)
@@ -260,12 +260,12 @@ internal extension Connection {
                     // only a one-to-one inverse (the other table holding a back-reference) needs explicit nullify
                     if try model.inverseType(of: relationship) == .toOne {
                         let sql = "UPDATE \(relationship.destinationEntity.rawValue.quotedIdentifier) SET \(relationship.inverseRelationship.rawValue.quotedIdentifier) = NULL WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                        try run(sql, [id.rawValue])
+                        try run(sql, [id.rawValue.binding])
                     }
                 }
             }
             let sql = "DELETE FROM \(entity.rawValue.quotedIdentifier) WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) = ?"
-            try run(sql, [id.rawValue])
+            try run(sql, [id.rawValue.binding])
         }
     }
 
@@ -320,10 +320,10 @@ internal extension Connection {
                 // one-to-many: rewrite the foreign key on the destination table
                 let table = relationship.destinationEntity.rawValue.quotedIdentifier
                 let foreignKey = relationship.inverseRelationship.rawValue.quotedIdentifier
-                try run("UPDATE \(table) SET \(foreignKey) = NULL WHERE \(foreignKey) = ?", [value.id.rawValue])
+                try run("UPDATE \(table) SET \(foreignKey) = NULL WHERE \(foreignKey) = ?", [value.id.rawValue.binding])
                 if destinationIDs.isEmpty == false {
                     let placeholders = repeatElement("?", count: destinationIDs.count).joined(separator: ", ")
-                    let bindings: [Binding?] = [value.id.rawValue] + destinationIDs.map { $0.rawValue }
+                    let bindings: [Binding?] = [value.id.rawValue.binding] + destinationIDs.map { $0.rawValue.binding }
                     try run("UPDATE \(table) SET \(foreignKey) = ? WHERE \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) IN (\(placeholders))", bindings)
                 }
             case .toMany:
@@ -340,10 +340,10 @@ internal extension Connection {
             switch try model.inverseType(of: relationship) {
             case .toOne:
                 let sql = "SELECT \(SQLiteDatabase.primaryKeyColumn.quotedIdentifier) FROM \(relationship.destinationEntity.rawValue.quotedIdentifier) WHERE \(relationship.inverseRelationship.rawValue.quotedIdentifier) = ?"
-                let statement = try prepare(sql, [value.id.rawValue])
+                let statement = try prepare(sql, [value.id.rawValue.binding])
                 var results = [ObjectID]()
                 while let row = try statement.failableNext() {
-                    guard let idString = row[0] as? String else { continue }
+                    guard let idString = row[0]?.textValue else { continue }
                     results.append(ObjectID(rawValue: idString))
                 }
                 destinationIDs = results
