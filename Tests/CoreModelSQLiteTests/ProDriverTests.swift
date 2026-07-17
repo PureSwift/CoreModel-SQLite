@@ -52,7 +52,7 @@ struct ProfessionalDriverTests {
     @Test func siteSearch() async throws {
         let database = try await makeCatalogDatabase()
         // compound OR of case-insensitive contains over name/city/directions/address/zipCode
-        let query = try #require(Site.Query.search("Ashland"))
+        let query = Site.Query.search("Ashland")
         let request = FetchRequest(
             entity: Site.entityName,
             predicate: query.predicate,
@@ -68,7 +68,7 @@ struct ProfessionalDriverTests {
                 || $0.zipCode.rawValue.contains("Ashland")
         })
         // case-insensitivity: the same search lowercased returns the same rows
-        let lowercased = try #require(Site.Query.search("ashland"))
+        let lowercased = Site.Query.search("ashland")
         let lowercasedIDs = try await database.fetchID(
             FetchRequest(entity: Site.entityName, predicate: lowercased.predicate, fetchLimit: 100)
         )
