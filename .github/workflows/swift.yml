@@ -19,6 +19,24 @@ jobs:
     - name: Test
       run: swift test -c ${{ matrix.config }}
 
+  coverage:
+    name: Code Coverage
+    runs-on: macos-26
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Swift Version
+      run: swift --version
+    - name: Export coverage and enforce threshold
+      run: Scripts/coverage.sh
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-coverage
+        path: .build/coverage/coverage.lcov
+        if-no-files-found: error
+
   linux:
     name: Linux (${{ matrix.container }})
     runs-on: ubuntu-latest
