@@ -63,9 +63,9 @@ private struct SeededGenerator: RandomNumberGenerator {
 /// Whether this SQLite build includes the R*Tree module (an optional compile-time
 /// feature), determined by attempting to create an R*Tree virtual table in memory.
 private let isRTreeAvailable: Bool = {
-    guard let connection = try? Connection(.inMemory) else { return false }
+    guard let connection = try? Connection(path: .inMemory) else { return false }
     do {
-        try connection.execute("CREATE VIRTUAL TABLE rtree_probe USING rtree(id, minX, maxX)")
+        try connection.run("CREATE VIRTUAL TABLE rtree_probe USING rtree(id, minX, maxX)")
         return true
     } catch {
         return false
@@ -300,14 +300,18 @@ func appManagedRTreePrefilter() async throws {
     let maxLon = referenceLongitude + lonDelta
 
     // Query the app's R*Tree (through the app's own read connection) for candidate ids.
-    let reader = try Connection(path, readonly: true)
-    let candidates = Set(try reader.prepare("""
+    let reader = try Connection(path: path, isReadOnly: true)
+    let statement = try reader.prepare("""
         SELECT m.site_id FROM "Site_rtree" r
         JOIN "Site_rtree_map" m ON m.rowid = r.id
         WHERE r.minLat <= ? AND r.maxLat >= ? AND r.minLon <= ? AND r.maxLon >= ?
-        """, maxLat, minLat, maxLon, minLon).compactMap { row in
-            (row[0] as? String).map { ObjectID(rawValue: $0) }
-    })
+        """, [maxLat.binding, minLat.binding, maxLon.binding, minLon.binding])
+    var candidates = Set<ObjectID>()
+    while let row = try statement.failableNext() {
+        if let site = row[0]?.textValue {
+            candidates.insert(ObjectID(rawValue: site))
+        }
+    }
 
     // Combine the R*Tree candidate set with the exact distance filter via the library.
     let request = FetchRequest(
