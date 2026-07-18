@@ -32,7 +32,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/PureSwift/SQLite",
-            from: "0.1.1"
+            from: "0.2.0"
         )
     ],
     targets: [
