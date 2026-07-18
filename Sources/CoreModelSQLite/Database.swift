@@ -220,6 +220,7 @@ internal extension Connection {
         let entityDescription = try model.entity(fetchRequest.entity)
         let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
         guard let count = try scalar(query.sql, query.bindings)?.integer else {
+            assertionFailure("COUNT(*) always returns a single integer row")
             return 0
         }
         return UInt(count)
