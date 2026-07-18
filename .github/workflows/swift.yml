@@ -22,6 +22,9 @@ jobs:
   coverage:
     name: Code Coverage
     runs-on: macos-26
+    permissions:
+      contents: read
+      code-quality: write # required by actions/upload-code-coverage
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -29,12 +32,21 @@ jobs:
       run: swift --version
     - name: Export coverage and enforce threshold
       run: Scripts/coverage.sh
-    - name: Upload coverage report
+    - name: Upload coverage to GitHub Code Quality
+      uses: actions/upload-code-coverage@v1
+      with:
+        file: .build/coverage/coverage.xml
+        language: Swift
+        label: code-coverage/llvm-cov
+        # Code Quality is in public preview; don't fail CI if the upload/feature
+        # is unavailable on the repo. Drop this once it's generally available.
+        fail-on-error: false
+    - name: Upload coverage artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: code-coverage
-        path: .build/coverage/coverage.lcov
+        path: .build/coverage/
         if-no-files-found: error
 
   linux:
