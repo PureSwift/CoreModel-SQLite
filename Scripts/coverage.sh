@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 #
-# coverage.sh — run the test suite with code coverage, export an LCOV report,
-# and enforce a minimum line-coverage threshold for the library sources.
+# coverage.sh — run the test suite with code coverage, export LCOV and Cobertura
+# reports, and enforce a minimum line-coverage threshold for the library sources.
 #
-# Only the CoreModelSQLite target sources are counted toward the threshold;
-# dependencies, generated sources and the test target are excluded so the
-# number reflects the coverage of this package's own code.
+# Only the CoreModelSQLite target sources are counted toward the threshold and
+# reports; dependencies, generated sources and the test target are excluded so
+# the number reflects the coverage of this package's own code.
+#
+# The Cobertura XML (coverage.xml) is what CI hands to GitHub Code Quality via
+# `actions/upload-code-coverage`, which surfaces the coverage percentage on PRs.
 #
 # Usage:
 #   Scripts/coverage.sh [threshold]
@@ -14,6 +17,7 @@
 #   COVERAGE_THRESHOLD   Minimum line coverage percentage (default: 80).
 #                        Overridden by the optional [threshold] argument.
 #   COVERAGE_OUTPUT      LCOV output file (default: .build/coverage/coverage.lcov).
+#   COBERTURA_OUTPUT     Cobertura XML output file (default: .build/coverage/coverage.xml).
 #   SKIP_TEST            If set to 1, reuse existing coverage data instead of
 #                        re-running `swift test`.
 
@@ -24,6 +28,7 @@ SOURCE_FILTER="/Sources/CoreModelSQLite/"
 
 THRESHOLD="${1:-${COVERAGE_THRESHOLD:-80}}"
 OUTPUT="${COVERAGE_OUTPUT:-.build/coverage/coverage.lcov}"
+COBERTURA_OUTPUT="${COBERTURA_OUTPUT:-.build/coverage/coverage.xml}"
 
 # Resolve the correct llvm-cov / llvm-profdata (xcrun on Apple platforms).
 if command -v xcrun >/dev/null 2>&1; then
@@ -74,7 +79,75 @@ else
     echo "warning: could not locate test binary or profdata; skipping LCOV export" >&2
 fi
 
-# 5. Compute line coverage for the library sources and enforce the threshold.
+# 5. Generate a Cobertura XML report (for GitHub Code Quality / upload-code-coverage).
+echo "==> Writing Cobertura report to $COBERTURA_OUTPUT"
+mkdir -p "$(dirname "$COBERTURA_OUTPUT")"
+python3 - "$CODECOV_JSON" "$SOURCE_FILTER" "$PWD" "$COBERTURA_OUTPUT" <<'PY'
+import json, os, sys, time
+from xml.sax.saxutils import escape, quoteattr
+
+report_path, source_filter, repo_root, output = sys.argv[1:5]
+
+with open(report_path) as f:
+    report = json.load(f)
+
+files = []
+total_covered = total_lines = 0
+for file in report["data"][0]["files"]:
+    name = file["filename"]
+    if source_filter not in name:
+        continue
+    # Per-line hit count: the greatest region count starting on each line (a line
+    # is covered if any region on it executed, so branch sub-regions don't hide it).
+    line_hits = {}
+    for seg in file["segments"]:
+        line, count, has_count = seg[0], seg[2], seg[3]
+        if has_count:
+            line_hits[line] = max(line_hits.get(line, 0), count)
+    covered = sum(1 for h in line_hits.values() if h > 0)
+    total_covered += covered
+    total_lines += len(line_hits)
+    files.append((os.path.relpath(name, repo_root), line_hits, covered, len(line_hits)))
+
+def rate(c, t):
+    return c / t if t else 0.0
+
+overall = rate(total_covered, total_lines)
+timestamp = int(time.time())
+
+out = [
+    '<?xml version="1.0" ?>',
+    '<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">',
+    '<coverage line-rate="%.4f" branch-rate="0" lines-covered="%d" lines-valid="%d" '
+    'branches-covered="0" branches-valid="0" complexity="0" version="llvm-cov" timestamp="%d">'
+    % (overall, total_covered, total_lines, timestamp),
+    "  <sources>",
+    "    <source>%s</source>" % escape(repo_root),
+    "  </sources>",
+    "  <packages>",
+    '    <package name="CoreModelSQLite" line-rate="%.4f" branch-rate="0" complexity="0">' % overall,
+    "      <classes>",
+]
+for rel, line_hits, covered, total in sorted(files):
+    out.append(
+        '        <class name=%s filename=%s line-rate="%.4f" branch-rate="0" complexity="0">'
+        % (quoteattr(os.path.basename(rel)), quoteattr(rel), rate(covered, total))
+    )
+    out.append("          <methods/>")
+    out.append("          <lines>")
+    for line in sorted(line_hits):
+        out.append('            <line number="%d" hits="%d"/>' % (line, line_hits[line]))
+    out.append("          </lines>")
+    out.append("        </class>")
+out += ["      </classes>", "    </package>", "  </packages>", "</coverage>"]
+
+with open(output, "w") as f:
+    f.write("\n".join(out) + "\n")
+
+print("    %d/%d lines (%.2f%%)" % (total_covered, total_lines, 100 * overall))
+PY
+
+# 6. Compute line coverage for the library sources and enforce the threshold.
 echo "==> Computing coverage for ${SOURCE_FILTER}"
 python3 - "$CODECOV_JSON" "$SOURCE_FILTER" "$THRESHOLD" <<'PY'
 import json, sys
