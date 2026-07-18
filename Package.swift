@@ -30,12 +30,9 @@ let package = Package(
             url: "https://github.com/PureSwift/CoreModel",
             from: "2.8.0"
         ),
-        // PureSwift/SQLite wraps the system SQLite3 on Apple platforms and links
-        // an embedded SQLite (via swift-sqlcipher) everywhere else, so no separate
-        // C SQLite dependency or per-platform branching is needed here.
         .package(
             url: "https://github.com/PureSwift/SQLite",
-            branch: "master"
+            from: "0.1.1"
         )
     ],
     targets: [
