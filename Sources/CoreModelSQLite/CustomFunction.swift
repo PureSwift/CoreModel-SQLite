@@ -5,7 +5,11 @@
 //  Created by Alsey Coleman Miller on 7/16/26.
 //
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#elseif canImport(Foundation)
 import Foundation
+#endif
 import CoreModel
 import SQLite
 

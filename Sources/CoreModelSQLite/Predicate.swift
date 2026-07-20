@@ -5,7 +5,11 @@
 //  Created by Alsey Coleman Miller on 7/4/25.
 //
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#elseif canImport(Foundation)
 import Foundation
+#endif
 import CoreModel
 import SQLite
 
@@ -150,8 +154,8 @@ internal extension FetchRequest.Predicate.Comparison {
         case .like:
             // Translate Cocoa-style wildcards (`*`, `?`) to SQL (`%`, `_`).
             let pattern = try right.likePattern(predicate: predicate)
-                .replacingOccurrences(of: "*", with: "%")
-                .replacingOccurrences(of: "?", with: "_")
+                .replacing(occurrencesOf: "*", with: "%")
+                .replacing(occurrencesOf: "?", with: "_")
             return .like(column: column, pattern: pattern)
         case .in:
             let values = try right.constantBindings(predicate: predicate)
@@ -308,9 +312,9 @@ private extension FetchRequest.Predicate.Expression {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
         return value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
+            .replacing(occurrencesOf: "\\", with: "\\\\")
+            .replacing(occurrencesOf: "%", with: "\\%")
+            .replacing(occurrencesOf: "_", with: "\\_")
     }
 }
 
@@ -343,6 +347,31 @@ internal extension String {
 
     /// Quote as a SQL identifier.
     var quotedIdentifier: String {
-        "\"" + replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + replacing(occurrencesOf: "\"", with: "\"\"") + "\""
+    }
+
+    /// Replace every occurrence of `target` with `replacement`.
+    ///
+    /// Pure-stdlib stand-in for Foundation's `replacingOccurrences(of:with:)`,
+    /// which `FoundationEssentials` (Android/Linux) does not provide; the
+    /// stdlib's own `replacing(_:with:)` requires a newer platform floor than
+    /// this package supports on Darwin.
+    func replacing(occurrencesOf target: String, with replacement: String) -> String {
+        guard target.isEmpty == false else {
+            return self
+        }
+        var result = String()
+        result.reserveCapacity(count)
+        var index = startIndex
+        while index < endIndex {
+            if self[index...].hasPrefix(target) {
+                result += replacement
+                index = self.index(index, offsetBy: target.count)
+            } else {
+                result.append(self[index])
+                index = self.index(after: index)
+            }
+        }
+        return result
     }
 }
