@@ -28,11 +28,11 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/PureSwift/CoreModel",
-            from: "2.8.0"
+            from: "2.10.1"
         ),
         .package(
             url: "https://github.com/PureSwift/SQLite",
-            from: "0.2.0"
+            from: "0.2.1"
         )
     ],
     targets: [
