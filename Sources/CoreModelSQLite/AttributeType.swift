@@ -39,6 +39,11 @@ internal extension ColumnDefinition.Affinity {
             // stored as a string to preserve precision;
             // NUMERIC affinity would coerce to REAL
             self = .TEXT
+        case .composite:
+            // Composite attributes are expanded into one column per leaf element, so a
+            // composite type never reaches a column definition.
+            assertionFailure("Composite attribute types are expanded into leaf columns")
+            self = .BLOB
         }
     }
 }

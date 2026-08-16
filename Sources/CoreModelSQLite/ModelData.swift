@@ -23,9 +23,11 @@ internal extension ModelData {
         assert(entity.id == self.entity)
         var values: [(String, Binding?)] = [(SQLiteDatabase.primaryKeyColumn, id.rawValue.binding)]
         values.reserveCapacity(1 + entity.attributes.count + entity.relationships.count)
-        for attribute in entity.attributes {
-            let value = attributes[attribute.id] ?? .null
-            values.append((attribute.id.rawValue, value.binding))
+        // composite attributes contribute one column per leaf element
+        for column in entity.attributeColumns {
+            let root = attributes[column.path[0]] ?? .null
+            let value = root.value(at: column.path.dropFirst()) ?? .null
+            values.append((column.name, value.binding))
         }
         for relationship in entity.relationships where relationship.type == .toOne {
             let binding: Binding?
@@ -47,8 +49,8 @@ internal extension ModelData {
     /// DO UPDATE` that only overwrites columns the caller actually supplied.
     func providedColumnNames(for entity: EntityDescription) -> Set<String> {
         var names = Set<String>()
-        for attribute in entity.attributes where attributes[attribute.id] != nil {
-            names.insert(attribute.id.rawValue)
+        for column in entity.attributeColumns where attributes[column.path[0]] != nil {
+            names.insert(column.name)
         }
         for relationship in entity.relationships where relationship.type == .toOne && relationships[relationship.id] != nil {
             names.insert(relationship.id.rawValue)
@@ -68,8 +70,7 @@ internal extension ModelData {
         var attributes = [PropertyKey: AttributeValue]()
         attributes.reserveCapacity(entity.attributes.count)
         for attribute in entity.attributes {
-            let binding = row[attribute.id.rawValue] ?? nil
-            attributes[attribute.id] = try AttributeValue(binding: binding, type: attribute.type)
+            attributes[attribute.id] = try AttributeValue.decode(attribute: attribute, row: row)
         }
         var relationships = [PropertyKey: RelationshipValue]()
         relationships.reserveCapacity(entity.relationships.count)
