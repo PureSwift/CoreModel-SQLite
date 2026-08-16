@@ -274,6 +274,10 @@ private extension FetchRequest.Predicate.Expression {
             return try function.sqlFragment(for: entity, predicate: predicate)
         case .attribute, .relationship:
             return SQLFragment(sql: "?", bindings: [try constantBinding(predicate: predicate)])
+        case .arithmetic:
+            // - TODO: Translate arithmetic expressions to SQL. Until then they are
+            //   rejected so the caller can fall back to in-memory evaluation.
+            throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
     }
 
@@ -291,7 +295,7 @@ private extension FetchRequest.Predicate.Expression {
             case .toMany:
                 throw SQLiteDatabaseError.invalidPredicate(predicate)
             }
-        case .keyPath, .function:
+        case .keyPath, .function, .arithmetic:
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
     }
@@ -336,7 +340,10 @@ internal extension EntityDescription {
         if property.rawValue == SQLiteDatabase.primaryKeyColumn {
             return true
         }
-        if attributes.contains(where: { $0.id == property }) {
+        // Composite attributes are expanded into leaf columns named by dotted path, so an
+        // element key path such as `address.location.latitude` matches its column directly.
+        // A composite attribute *as a whole* deliberately does not: it has no single column.
+        if attributeColumns.contains(where: { $0.name == property.rawValue }) {
             return true
         }
         return relationships.contains(where: { $0.id == property && $0.type == .toOne })
