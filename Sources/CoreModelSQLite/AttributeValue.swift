@@ -46,6 +46,11 @@ internal extension AttributeValue {
             return .double(value)
         case let .decimal(value):
             return .text(value.description)
+        case .composite:
+            // A composite has no single binding: it is expanded into one binding per leaf
+            // column by `ModelData.columnValues(for:)`. Reaching here means a composite was
+            // used where a scalar is required, e.g. as a predicate constant.
+            return nil
         }
     }
 
@@ -116,6 +121,10 @@ internal extension AttributeValue {
                 throw SQLiteDatabaseError.invalidBinding(binding, type)
             }
             self = .decimal(value)
+        case .composite:
+            // Composites are reassembled from their leaf columns by
+            // `AttributeValue.decode(attribute:row:)`, never from a single binding.
+            throw SQLiteDatabaseError.invalidBinding(binding, type)
         }
     }
 }
