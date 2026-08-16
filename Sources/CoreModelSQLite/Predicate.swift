@@ -107,6 +107,35 @@ internal extension FetchRequest.Predicate.Comparison {
             }
         }
 
+        // `(a <op> b) <operator> constant` comparisons compile to a SQL expression.
+        if case let .arithmetic(arithmetic) = left {
+            guard modifier == nil else {
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+            let arithmeticFragment = try arithmetic.sqlFragment(for: entity, predicate: predicate)
+            switch type {
+            case .lessThan, .lessThanOrEqualTo, .greaterThan, .greaterThanOrEqualTo:
+                let value = try right.constantBinding(predicate: predicate)
+                return SQLFragment(
+                    sql: "\(arithmeticFragment.sql) \(type.rawValue) ?",
+                    bindings: arithmeticFragment.bindings + [value]
+                )
+            case .equalTo, .notEqualTo:
+                let value = try right.constantBinding(predicate: predicate)
+                let sqlOperator = (type == .equalTo) ? "=" : "<>"
+                guard let value else {
+                    let nullOperator = (type == .equalTo) ? "IS NULL" : "IS NOT NULL"
+                    return SQLFragment(sql: "\(arithmeticFragment.sql) \(nullOperator)", bindings: arithmeticFragment.bindings)
+                }
+                return SQLFragment(
+                    sql: "\(arithmeticFragment.sql) \(sqlOperator) ?",
+                    bindings: arithmeticFragment.bindings + [value]
+                )
+            default:
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+        }
+
         // Only `keyPath <operator> constant` comparisons map directly to columns.
         guard case let .keyPath(keyPath) = left else {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
@@ -258,6 +287,77 @@ internal extension FetchRequest.Predicate.FunctionExpression {
     }
 }
 
+private extension FetchRequest.Predicate.ArithmeticExpression {
+
+    /// The arithmetic expression as a parenthesized SQL expression.
+    ///
+    /// SQLite's native operators match CoreModel's in-memory semantics for the cases
+    /// that matter: `/` truncates when both operands are `INTEGER` (`7 / 2` is `3`),
+    /// promotes to `REAL` when either operand is, and division or remainder by zero
+    /// yields SQL `NULL` — which fails every comparison, exactly as the in-memory
+    /// engine's `nil` does.
+    ///
+    /// `.modulus` is rejected when a statically-known operand is non-integer:
+    /// SQLite's `%` casts its operands to `INTEGER`, but the in-memory engine
+    /// defines remainder for integers only, and a silently cast result would
+    /// diverge between backends.
+    ///
+    /// - Note: The only knowing divergence is at the edges of `Int64`: the in-memory
+    ///   engine wraps (`&+`), while SQLite promotes an overflowing `INTEGER` result
+    ///   to a `REAL` approximation.
+    func sqlFragment(
+        for entity: EntityDescription,
+        predicate: FetchRequest.Predicate
+    ) throws -> SQLFragment {
+        if function == .modulus {
+            for operand in [left, right] where operand.isKnownNonInteger(for: entity) {
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+        }
+        let leftFragment = try left.argumentSQLFragment(for: entity, predicate: predicate)
+        let rightFragment = try right.argumentSQLFragment(for: entity, predicate: predicate)
+        return SQLFragment(
+            sql: "(" + leftFragment.sql + " " + function.symbol + " " + rightFragment.sql + ")",
+            bindings: leftFragment.bindings + rightFragment.bindings
+        )
+    }
+}
+
+private extension FetchRequest.Predicate.Expression {
+
+    /// Whether this operand is statically known to be non-integer.
+    ///
+    /// Used to reject `.modulus` on floating-point operands. `false` means "integer
+    /// or unknown" — a custom function's result type can't be known here, and SQL
+    /// `NULL` propagation makes a wrong guess harmless for every case but `%`.
+    func isKnownNonInteger(for entity: EntityDescription) -> Bool {
+        switch self {
+        case let .attribute(value):
+            switch value {
+            case .int16, .int32, .int64, .bool:
+                return false
+            case .null, .string, .uuid, .url, .data, .date, .float, .double, .decimal, .composite:
+                return true
+            }
+        case let .keyPath(keyPath):
+            guard let column = entity.attributeColumns.first(where: { $0.name == keyPath.rawValue }) else {
+                return false
+            }
+            switch column.type {
+            case .int16, .int32, .int64, .bool:
+                return false
+            case .string, .uuid, .url, .data, .date, .float, .double, .decimal, .composite:
+                return true
+            }
+        case let .arithmetic(nested):
+            // integer only if both operands are; division stays integer for integers
+            return nested.left.isKnownNonInteger(for: entity) || nested.right.isKnownNonInteger(for: entity)
+        case .function, .relationship:
+            return false
+        }
+    }
+}
+
 private extension FetchRequest.Predicate.Expression {
 
     /// The expression as a SQL fragment suitable for use as a function argument
@@ -274,10 +374,8 @@ private extension FetchRequest.Predicate.Expression {
             return try function.sqlFragment(for: entity, predicate: predicate)
         case .attribute, .relationship:
             return SQLFragment(sql: "?", bindings: [try constantBinding(predicate: predicate)])
-        case .arithmetic:
-            // - TODO: Translate arithmetic expressions to SQL. Until then they are
-            //   rejected so the caller can fall back to in-memory evaluation.
-            throw SQLiteDatabaseError.invalidPredicate(predicate)
+        case let .arithmetic(arithmetic):
+            return try arithmetic.sqlFragment(for: entity, predicate: predicate)
         }
     }
 
