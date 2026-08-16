@@ -33,9 +33,9 @@ internal extension SchemaChanger.CreateTableDefinition {
             primaryKey: .init(autoIncrement: false), type: .TEXT, nullable: false, unique: true, defaultValue: .NULL, references: nil)
         add(column: id)
         
-        // add attribute columns
-        for attribute in entity.attributes {
-            add(column: ColumnDefinition(attribute: attribute))
+        // add attribute columns, expanding composite attributes into one column per leaf
+        for column in entity.attributeColumns {
+            add(column: ColumnDefinition(column: column))
         }
         
         // add to-one relationship columns
