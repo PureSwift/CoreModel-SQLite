@@ -28,6 +28,7 @@ public final class SQLiteViewContext: ViewContext {
         model: Model
     ) throws {
         let connection = try SQLite.Connection(path: location, isReadOnly: true)
+        try connection.registerBuiltinFunctions()
         self.model = model
         self.connection = connection
     }
@@ -35,6 +36,7 @@ public final class SQLiteViewContext: ViewContext {
     /// Open or create a database file at the specified path.
     init(path: String, model: Model) throws {
         let connection = try SQLite.Connection(path: path, isReadOnly: true)
+        try connection.registerBuiltinFunctions()
         self.model = model
         self.connection = connection
     }
