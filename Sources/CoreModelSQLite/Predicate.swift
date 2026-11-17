@@ -41,9 +41,11 @@ internal extension FetchRequest.Predicate.Compound {
     func sqlFragment(for entity: EntityDescription, model: Model) throws -> SQLFragment {
         switch self {
         case let .and(subpredicates):
-            return try .joined(subpredicates, separator: " AND ", entity: entity, model: model)
+            return try .joined(subpredicates, separator: " AND ", empty: "1", entity: entity, model: model)
         case let .or(subpredicates):
-            return try .joined(subpredicates, separator: " OR ", entity: entity, model: model)
+            // No subpredicate is true, so an empty `OR` matches nothing, as
+            // CoreModel evaluates it and as `NSCompoundPredicate` does.
+            return try .joined(subpredicates, separator: " OR ", empty: "0", entity: entity, model: model)
         case let .not(subpredicate):
             let fragment = try subpredicate.sqlFragment(for: entity, model: model)
             return SQLFragment(sql: "NOT (" + fragment.sql + ")", bindings: fragment.bindings)
@@ -56,11 +58,12 @@ private extension SQLFragment {
     static func joined(
         _ predicates: [FetchRequest.Predicate],
         separator: String,
+        empty: String,
         entity: EntityDescription,
         model: Model
     ) throws -> SQLFragment {
         guard predicates.isEmpty == false else {
-            return SQLFragment(sql: "1", bindings: [])
+            return SQLFragment(sql: empty, bindings: [])
         }
         let fragments = try predicates.map { try $0.sqlFragment(for: entity, model: model) }
         return SQLFragment(
@@ -169,24 +172,41 @@ internal extension FetchRequest.Predicate.Comparison {
                 let nullOperator = (type == .equalTo) ? "IS NULL" : "IS NOT NULL"
                 return SQLFragment(sql: "\(column) \(nullOperator)", bindings: [])
             }
-            let collation = options.contains(.caseInsensitive) ? " COLLATE NOCASE" : ""
-            return SQLFragment(sql: "\(column) \(sqlOperator) ?\(collation)", bindings: [value])
+            if options.contains(.caseInsensitive), case let .attribute(.string(string)) = right {
+                // Lowercased as Swift does, as CoreModel compares: SQLite's
+                // `NOCASE` folds ASCII letters only.
+                return SQLFragment(sql: "\(String.lowercaseFunction)(\(column)) \(sqlOperator) ?", bindings: [string.lowercased().binding])
+            }
+            return SQLFragment(sql: "\(column) \(sqlOperator) ?", bindings: [value])
+        // The string operators are case-sensitive unless the comparison says
+        // otherwise, as CoreModel evaluates them: `GLOB`, since `LIKE`
+        // ignores the case of ASCII letters.
         case .beginsWith:
-            let pattern = try right.likePattern(predicate: predicate)
-            return .like(column: column, pattern: pattern + "%")
+            let pattern = try right.globPattern(options: options, predicate: predicate)
+            return .glob(column: column, pattern: pattern + "*", options: options)
         case .endsWith:
-            let pattern = try right.likePattern(predicate: predicate)
-            return .like(column: column, pattern: "%" + pattern)
+            let pattern = try right.globPattern(options: options, predicate: predicate)
+            return .glob(column: column, pattern: "*" + pattern, options: options)
         case .contains:
-            let pattern = try right.likePattern(predicate: predicate)
-            return .like(column: column, pattern: "%" + pattern + "%")
+            let pattern = try right.globPattern(options: options, predicate: predicate)
+            return .glob(column: column, pattern: "*" + pattern + "*", options: options)
         case .like:
-            // Translate Cocoa-style wildcards (`*`, `?`) to SQL (`%`, `_`).
-            let pattern = try right.likePattern(predicate: predicate)
-                .replacing(occurrencesOf: "*", with: "%")
-                .replacing(occurrencesOf: "?", with: "_")
-            return .like(column: column, pattern: pattern)
+            // Cocoa-style wildcards (`*`, `?`) are GLOB's own; only `[` is
+            // escaped.
+            guard case let .attribute(.string(value)) = right else {
+                throw SQLiteDatabaseError.invalidPredicate(predicate)
+            }
+            let pattern = (options.contains(.caseInsensitive) ? value.lowercased() : value)
+                .replacing(occurrencesOf: "[", with: "[[]")
+            return .glob(column: column, pattern: pattern, options: options)
         case .in:
+            // Against a string: whether the column's value is a substring of it.
+            if case let .attribute(.string(string)) = right {
+                guard options.contains(.caseInsensitive) else {
+                    return SQLFragment(sql: "instr(?, \(column)) > 0", bindings: [string.binding])
+                }
+                return SQLFragment(sql: "instr(?, \(String.lowercaseFunction)(\(column))) > 0", bindings: [string.lowercased().binding])
+            }
             let values = try right.constantBindings(predicate: predicate)
             guard values.isEmpty == false else {
                 return SQLFragment(sql: "0", bindings: [])
@@ -264,8 +284,11 @@ internal extension FetchRequest.Predicate.Comparison {
 
 private extension SQLFragment {
 
-    static func like(column: String, pattern: String) -> SQLFragment {
-        SQLFragment(sql: "\(column) LIKE ? ESCAPE '\\'", bindings: [pattern.binding])
+    /// `column GLOB pattern`, comparing the column lowercased for a
+    /// case-insensitive comparison (the pattern is lowercased already).
+    static func glob(column: String, pattern: String, options: Set<FetchRequest.Predicate.Comparison.Option>) -> SQLFragment {
+        let subject = options.contains(.caseInsensitive) ? "\(String.lowercaseFunction)(\(column))" : column
+        return SQLFragment(sql: "\(subject) GLOB ?", bindings: [pattern.binding])
     }
 }
 
@@ -408,15 +431,27 @@ private extension FetchRequest.Predicate.Expression {
         }
     }
 
-    /// The expression as a `LIKE` pattern, escaping SQL wildcard characters.
-    func likePattern(predicate: FetchRequest.Predicate) throws -> String {
+    /// The expression as a `GLOB` pattern that matches it literally,
+    /// lowercased for a case-insensitive comparison.
+    func globPattern(
+        options: Set<FetchRequest.Predicate.Comparison.Option>,
+        predicate: FetchRequest.Predicate
+    ) throws -> String {
         guard case let .attribute(.string(value)) = self else {
             throw SQLiteDatabaseError.invalidPredicate(predicate)
         }
-        return value
-            .replacing(occurrencesOf: "\\", with: "\\\\")
-            .replacing(occurrencesOf: "%", with: "\\%")
-            .replacing(occurrencesOf: "_", with: "\\_")
+        let string = options.contains(.caseInsensitive) ? value.lowercased() : value
+        var pattern = String()
+        pattern.reserveCapacity(string.utf8.count)
+        for character in string {
+            switch character {
+            case "[": pattern += "[[]"
+            case "*": pattern += "[*]"
+            case "?": pattern += "[?]"
+            default: pattern.append(character)
+            }
+        }
+        return pattern
     }
 }
 
@@ -449,6 +484,11 @@ internal extension EntityDescription {
 }
 
 internal extension String {
+
+    /// The SQL function every connection has that lowercases text as Swift
+    /// does, for case-insensitive comparisons: SQLite's own `lower()` folds
+    /// ASCII letters only.
+    static let lowercaseFunction = "coremodel_lowercased"
 
     /// Quote as a SQL identifier.
     var quotedIdentifier: String {

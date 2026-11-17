@@ -53,12 +53,13 @@ private func makePeopleDatabase() async throws -> SQLiteDatabase {
     #expect(ids == ["bob", "carol"])
 }
 
-@Test func emptyCompoundMatchesEverything() async throws {
+@Test func emptyCompounds() async throws {
     let database = try await makePeopleDatabase()
+    // Every subpredicate of none is true; no subpredicate of none is.
     let and = try await database.count(FetchRequest(entity: "Person", predicate: .compound(.and([]))))
     #expect(and == 3)
     let or = try await database.count(FetchRequest(entity: "Person", predicate: .compound(.or([]))))
-    #expect(or == 3)
+    #expect(or == 0)
 }
 
 // MARK: - NULL handling

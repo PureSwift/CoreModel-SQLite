@@ -45,6 +45,7 @@ public actor SQLiteDatabase {
     ) throws {
         self.model = model
         try connection.createTables(model: model)
+        try connection.registerBuiltinFunctions()
         self.connection = connection
     }
 }
@@ -222,7 +223,19 @@ internal extension Connection {
 
     func count(_ fetchRequest: FetchRequest, model: Model) throws -> UInt {
         let entityDescription = try model.entity(fetchRequest.entity)
-        let query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
+        let query: SQLFragment
+        if fetchRequest.fetchLimit > 0 || fetchRequest.fetchOffset > 0 {
+            // The limit and offset apply to the rows counted, not to the one
+            // row `COUNT(*)` answers with.
+            let rows = try fetchRequest.sqlFragment(
+                for: entityDescription,
+                model: model,
+                columns: SQLiteDatabase.primaryKeyColumn.quotedIdentifier
+            )
+            query = SQLFragment(sql: "SELECT COUNT(*) FROM (" + rows.sql + ")", bindings: rows.bindings)
+        } else {
+            query = try fetchRequest.sqlFragment(for: entityDescription, model: model, columns: "COUNT(*)")
+        }
         guard let count = try scalar(query.sql, query.bindings)?.integer else {
             assertionFailure("COUNT(*) always returns a single integer row")
             return 0
@@ -389,7 +402,10 @@ internal extension FetchRequest {
                     return SQLFragment(sql: sql, bindings: functionFragment.bindings)
                 }
             }
+            // Ties go by object ID, as CoreModel's in-memory evaluation sorts
+            // them, rather than in whatever order SQLite reads the rows.
             sql += " ORDER BY " + fragments.map(\.sql).joined(separator: ", ")
+                + ", " + SQLiteDatabase.primaryKeyColumn.quotedIdentifier + " ASC"
             bindings += fragments.flatMap(\.bindings)
         } else {
             // match CoreData's default behavior of sorting by object ID when no sort descriptors are provided
@@ -404,5 +420,20 @@ internal extension FetchRequest {
             sql += " LIMIT -1 OFFSET \(fetchOffset)"
         }
         return SQLFragment(sql: sql, bindings: bindings)
+    }
+}
+
+internal extension Connection {
+
+    /// The functions the predicates' SQL calls: lowercasing as Swift does,
+    /// for case-insensitive comparisons, where SQLite's `lower()` and
+    /// `NOCASE` fold ASCII letters only.
+    func registerBuiltinFunctions() throws {
+        try createFunction(String.lowercaseFunction, argumentCount: 1, deterministic: true) { arguments in
+            guard case let .text(string)? = arguments.first else {
+                return arguments.first ?? .null
+            }
+            return .text(string.lowercased())
+        }
     }
 }
